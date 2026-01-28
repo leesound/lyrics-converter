@@ -49,33 +49,84 @@ function App() {
     setIsConverting(true)
 
     try {
+      // Custom dictionary replacements to fix known tokenizer errors
+      const customReplacements: Record<string, string> = {
+        '一発': 'いっぱつ',
+        '鐘々': 'かねがね',
+        'ランデヴー': 'らんでぶー',
+        'ヴィ': 'び',
+        'ヴェ': 'べ',
+        'ヴォ': 'ぼ',
+        'ヴァ': 'ば',
+        'ゔ': 'ぶ',
+        '酩酊': 'めいてい', // Ensure correct reading
+      }
+
+      const applyCustomReplacements = (text: string): string => {
+        let res = text
+        Object.entries(customReplacements).forEach(([key, val]) => {
+          res = res.replaceAll(key, val)
+        })
+        return res
+      }
+
       const lines = inputText.split('\n').filter(line => line.trim())
 
       const converted: LyricLine[] = await Promise.all(lines.map(async (line) => {
         const trimmedLine = line.trim()
 
-        // 1. Pre-convert Katakana to Hiragana FIRST.
-        // This prevents Kuroshiro from weirdly converting Katakana long vowels (e.g. ー becomes う).
-        // converting 'ヘッヘッヘルプミー' -> 'へっへっへるぷみー'
-        const preprocessed = wanakana.toHiragana(trimmedLine, { passRomaji: true })
+        // 1. Apply custom dictionary fixes to raw text for better conversion
+        const textForConversion = applyCustomReplacements(trimmedLine)
 
-        // 2. Use Kuroshiro to convert Kanji -> Hiragana
-        const hiraganaNormal = await kuroshiroRef.current!.convert(preprocessed, {
+        // 2. Convert to Hiragana using Kuroshiro (mode: normal to keep connections)
+        const hiraganaRaw = await kuroshiroRef.current!.convert(textForConversion, {
           to: 'hiragana',
           mode: 'normal'
         })
 
-        // 3. Convert to Romaji using the preprocessed hiragana-kanji mix
-        const romaji = await kuroshiroRef.current!.convert(preprocessed, {
+        // Post-process Hiragana: 
+        // - Handle 'ゔ' -> 'ぶ' explicitly if Kuroshiro missed it
+        // - Ensure all characters are Hiragana (Kuroshiro can leave some Katakana)
+        let finalHiragana = wanakana.toHiragana(hiraganaRaw, { passRomaji: true })
+        finalHiragana = finalHiragana.replace(/ゔ/g, 'ぶ')
+
+        // 3. Convert to Romaji
+        // Use 'spaced' mode to get basic spacing
+        let romajiRaw = await kuroshiroRef.current!.convert(textForConversion, {
           to: 'romaji',
           mode: 'spaced',
           romajiSystem: 'hepburn'
         })
 
+        // Post-process Romaji to fix "hetsu" and spacing errors
+        // 1. Fix Sokuon: " tsu " followed by consonant -> double consonant
+        //    Looking for patterns like "hetsu he" -> "hehhe"
+        let finalRomaji = romajiRaw
+          .replace(/\s+(tsu|tu)\s+([ksthmyrwgzbpdj])/gi, (match, sokuon, nextConsonant) => {
+            return ' ' + nextConsonant + nextConsonant
+          })
+          // Fix: "hetsu" at the end of a word/line? 
+          // User wanted "hepp" for "ヘッ". This implies the next sound P is anticipated, 
+          // or it's a stylistic choice. 
+          // Standard Hepburn uses apostrophe or nothing.
+          // Let's being safe: replace " tsu" at end of tokens with apostrophe ' 
+          // if it wasn't caught by the double-consonant rule.
+          .replace(/\s(tsu|tu)\s/gi, " ' ")
+          .replace(/\s(tsu|tu)$/gi, "'")
+
+          // Fix: "no n" -> "non" (Common error with 'n' kana)
+          // Look for " n " followed by vowel or space? No, "no n" is "no" + "n".
+          // If kuroshiro output "no n", join them? This is risky.
+          // But "non" (flat) is one word. The custom replacement (revert preprocess) should fix "non".
+
+          // Clean up multiple spaces
+          .replace(/\s+/g, ' ')
+          .trim()
+
         return {
           original: trimmedLine,
-          hiragana: hiraganaNormal,
-          romaji: romaji
+          hiragana: finalHiragana,
+          romaji: finalRomaji
         }
       }))
 
