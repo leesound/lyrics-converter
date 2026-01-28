@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye } from 'lucide-react'
+import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
@@ -31,32 +31,37 @@ function App() {
   const [convertedLines, setConvertedLines] = useState<ConvertedLine[]>([])
   const [isConverting, setIsConverting] = useState(false)
   const [isReady, setIsReady] = useState(false)
+  const [initError, setInitError] = useState<string | null>(null)
 
   // OCR States
   const [isOcrProcessing, setIsOcrProcessing] = useState(false)
   const [ocrProgress, setOcrProgress] = useState(0)
   const [ocrStatus, setOcrStatus] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
 
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    const initKuroshiro = async () => {
-      const kuroshiro = new Kuroshiro()
-      try {
-        // Construct the dictionary path based on the base URL
-        const dictPath = import.meta.env.BASE_URL === '/'
-          ? '/dict'
-          : `${import.meta.env.BASE_URL}dict`
+  const initKuroshiro = async () => {
+    setInitError(null)
+    const kuroshiro = new Kuroshiro()
+    try {
+      // Construct the dictionary path based on the base URL
+      const dictPath = import.meta.env.BASE_URL === '/'
+        ? '/dict'
+        : `${import.meta.env.BASE_URL}dict`
 
-        await kuroshiro.init(new KuromojiAnalyzer({ dictPath }))
-        kuroshiroRef.current = kuroshiro
-        setIsReady(true)
-      } catch (err) {
-        console.error('Kuroshiro initialization failed:', err)
-        alert('词库初始化失败，请检查网络连接或刷新页面。错误详情：' + err)
-      }
+      console.log('Initializing Kuroshiro with dictPath:', dictPath)
+      await kuroshiro.init(new KuromojiAnalyzer({ dictPath }))
+      kuroshiroRef.current = kuroshiro
+      setIsReady(true)
+    } catch (err) {
+      console.error('Kuroshiro initialization failed:', err)
+      setInitError(String(err))
     }
+  }
+
+  useEffect(() => {
     initKuroshiro()
   }, [])
 
@@ -98,9 +103,6 @@ function App() {
             nextConsonant = nextMoraRomaji.charAt(0)
           }
         } else {
-          // End of word sokuon -> apostrophe or nothing? User prompt implies explicit handling.
-          // Let's use apostrophe for safety or just blank if it's strictly mute.
-          // But typically it doubles the 'space' or glottal stop.
           nextConsonant = "'"
         }
 
@@ -123,8 +125,6 @@ function App() {
       }
 
       // 4. Normal Kana
-      // Ensure Katakana is converted to Hiragana for consistency if not already
-      // But wanakana.toRomaji handles Katakana too.
       moras.push({
         kana: char,
         romaji: wanakana.toRomaji(char),
@@ -140,7 +140,6 @@ function App() {
     setIsConverting(true)
 
     try {
-      // Custom dictionary replacements to fix known tokenizer errors
       const customReplacements: Record<string, string> = {
         '一発': 'いっぱつ',
         '鐘々': 'かねがね',
@@ -150,7 +149,7 @@ function App() {
         'ヴォ': 'ぼ',
         'ヴァ': 'ば',
         'ゔ': 'ぶ',
-        '酩酊': 'めいてい', // Ensure correct reading
+        '酩酊': 'めいてい',
       }
 
       const applyCustomReplacements = (text: string): string => {
@@ -163,47 +162,33 @@ function App() {
 
       const lines = inputText.split('\n').filter(line => line.trim())
 
-      // Process each line
       const convertedResult: ConvertedLine[] = await Promise.all(lines.map(async (line) => {
         const trimmedLine = line.trim()
 
-        // Use 'furigana' mode for easy parsing of tokens
-        // HTML: <ruby>君<rp>(</rp><rt>きみ</rt><rp>)</rp></ruby>
         const rubyHtml = await kuroshiroRef.current!.convert(applyCustomReplacements(trimmedLine), {
           to: 'hiragana',
           mode: 'furigana'
         })
 
-        // Parse HTML string to extract tokens
         const wordList: Word[] = []
-
-        // Create a temporary DOM element to parse
         const tempDiv = document.createElement('div')
         tempDiv.innerHTML = rubyHtml
 
-        // Iterate over child nodes
         tempDiv.childNodes.forEach(node => {
           if (node.nodeType === Node.TEXT_NODE) {
-            // Plain text (Kana, punctuation)
             const text = node.textContent?.trim() || ''
             if (!text) return
 
-            // For plain text, we still want to separate by Mora!
-            // We should ensure it's Hiragana first if it's Katakana?
-            // Wanakana toHiragana is safe.
             const hiraganaText = wanakana.toHiragana(text, { passRomaji: true })
 
             wordList.push({
-              original: '', // No kanji above
+              original: '',
               moras: parseMoras(hiraganaText)
             })
           } else if (node.nodeName === 'RUBY') {
-            // It's a Kanji word
             let kanji = ''
             let reading = ''
 
-            // Extract Kanji and Reading
-            // <ruby> 漢字 <rp>(</rp> <rt>かんじ</rt> <rp>)</rp> </ruby>
             node.childNodes.forEach(child => {
               if (child.nodeType === Node.TEXT_NODE) {
                 kanji += child.textContent
@@ -212,11 +197,7 @@ function App() {
               }
             })
 
-            // Clean reading (remove spaces if any)
-            reading = reading.trim()
-
-            // Post-process reading: Ensure 'ゔ' -> 'ぶ'
-            reading = reading.replace(/ゔ/g, 'ぶ')
+            reading = reading.trim().replace(/ゔ/g, 'ぶ')
 
             wordList.push({
               original: kanji,
@@ -237,8 +218,7 @@ function App() {
     }
   }
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
+  const processFile = async (file: File) => {
     if (!file) return
 
     setIsOcrProcessing(true)
@@ -255,7 +235,6 @@ function App() {
               setOcrProgress(Math.round(m.progress * 100))
               setOcrStatus(`正在识别文字... ${Math.round(m.progress * 100)}%`)
             } else {
-              // Translate common status messages
               const statusMap: Record<string, string> = {
                 'loading tesseract core': '加载核心组件...',
                 'initializing tesseract': '初始化引擎...',
@@ -268,17 +247,12 @@ function App() {
         }
       )
 
-      // Clean up text (remove empty lines, merge broken lines presumably?)
-      // Simple cleanup for now
       const cleanText = text.split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0)
         .join('\n')
 
       setInputText(cleanText)
-
-      // Switch to text tab? Or notify success. 
-      // Just notify for now, user can click convert.
       alert('图片识别成功！请检查识别结果并进行微调。')
 
     } catch (err) {
@@ -288,10 +262,45 @@ function App() {
       setIsOcrProcessing(false)
       setOcrProgress(0)
       setOcrStatus('')
-      // Reset file input
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
+    }
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      processFile(file)
+    }
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isOcrProcessing) {
+      setIsDragging(true)
+    }
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    if (isOcrProcessing) return
+
+    const file = e.dataTransfer.files?.[0]
+    if (file && file.type.startsWith('image/')) {
+      processFile(file)
+    } else if (file) {
+      alert('请上传图片文件 (JPG/PNG)')
     }
   }
 
@@ -373,10 +382,17 @@ function App() {
 
               <TabsContent value="image">
                 <div
-                  className={`border-2 border-dashed border-rose-200 rounded-lg p-8 text-center cursor-pointer transition-colors relative overflow-hidden
-                    ${isOcrProcessing ? 'bg-rose-50 cursor-wait' : 'hover:border-rose-400 hover:bg-rose-50/50'}
+                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all relative overflow-hidden
+                    ${isOcrProcessing ? 'bg-rose-50 border-rose-200 cursor-wait' :
+                      isDragging
+                        ? 'border-rose-500 bg-rose-50 scale-[0.99] shadow-inner'
+                        : 'border-rose-200 hover:border-rose-400 hover:bg-rose-50/50'
+                    }
                   `}
                   onClick={() => !isOcrProcessing && fileInputRef.current?.click()}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
                 >
                   {isOcrProcessing ? (
                     <div className="flex flex-col items-center justify-center py-4">
@@ -391,8 +407,10 @@ function App() {
                     </div>
                   ) : (
                     <>
-                      <Upload className="w-10 h-10 text-rose-300 mx-auto mb-3" />
-                      <p className="text-sm text-gray-600 mb-1">点击上传图片自动识别 (OCR)</p>
+                      <Upload className={`w-10 h-10 mx-auto mb-3 transition-colors ${isDragging ? 'text-rose-500' : 'text-rose-300'}`} />
+                      <p className={`text-sm mb-1 font-medium ${isDragging ? 'text-rose-600' : 'text-gray-600'}`}>
+                        {isDragging ? '松开即刻识别' : '拖入图片 或 点击上传 (OCR)'}
+                      </p>
                       <p className="text-xs text-gray-400">支持 JPG, PNG · 自动识别日文</p>
                     </>
                   )}
@@ -420,10 +438,14 @@ function App() {
                 className="flex-1 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white disabled:opacity-70"
               >
                 {!isReady ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    初始化词库中...
-                  </>
+                  initError ? (
+                    <>初始化失败</>
+                  ) : (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      初始化词库中...
+                    </>
+                  )
                 ) : isConverting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -436,6 +458,13 @@ function App() {
                   </>
                 )}
               </Button>
+
+              {(!isReady || initError) && (
+                <Button variant="outline" onClick={initKuroshiro} className="border-rose-200 text-rose-500 hover:bg-rose-50">
+                  <RefreshCw className={`w-4 h-4 ${!initError && !isReady ? 'animate-spin' : ''}`} />
+                </Button>
+              )}
+
               <Button
                 variant="outline"
                 onClick={clearAll}
@@ -445,6 +474,13 @@ function App() {
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
+
+            {initError && (
+              <p className="text-xs text-red-500 mt-2 text-center">
+                词库初始化失败: {initError} <br />
+                请检查网络连接，或尝试刷新页面。
+              </p>
+            )}
           </CardContent>
         </Card>
 
