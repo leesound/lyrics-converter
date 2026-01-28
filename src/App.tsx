@@ -54,32 +54,27 @@ function App() {
       const converted: LyricLine[] = await Promise.all(lines.map(async (line) => {
         const trimmedLine = line.trim()
 
+        // 1. Pre-convert Katakana to Hiragana FIRST.
+        // This prevents Kuroshiro from weirdly converting Katakana long vowels (e.g. ー becomes う).
+        // converting 'ヘッヘッヘルプミー' -> 'へっへっへるぷみー'
+        const preprocessed = wanakana.toHiragana(trimmedLine, { passRomaji: true })
 
+        // 2. Use Kuroshiro to convert Kanji -> Hiragana
+        const hiraganaNormal = await kuroshiroRef.current!.convert(preprocessed, {
+          to: 'hiragana',
+          mode: 'normal'
+        })
 
-        // Convert to Romaji
-        const romaji = await kuroshiroRef.current!.convert(trimmedLine, {
+        // 3. Convert to Romaji using the preprocessed hiragana-kanji mix
+        const romaji = await kuroshiroRef.current!.convert(preprocessed, {
           to: 'romaji',
           mode: 'spaced',
           romajiSystem: 'hepburn'
         })
 
-        // Kuroshiro's 'spaced' mode might add spaces even in hiragana? 
-        // Let's use 'normal' for hiragana to look like natural Japanese text 
-        // unless user wants spaces. Original requirement didn't specify, but usually hiragana is continuous.
-        // But screenshot showed "のう天" (no space).
-        // Let's use 'normal' for hiragana.
-
-        const hiraganaNormal = await kuroshiroRef.current!.convert(trimmedLine, {
-          to: 'hiragana',
-          mode: 'normal'
-        })
-
-        // Ensure all katakana is converted to hiragana (Kuroshiro might skip katakana input)
-        const finalHiragana = wanakana.toHiragana(hiraganaNormal, { passRomaji: true })
-
         return {
           original: trimmedLine,
-          hiragana: finalHiragana,
+          hiragana: hiraganaNormal,
           romaji: romaji
         }
       }))
