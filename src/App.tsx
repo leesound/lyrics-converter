@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Music, Languages, Type, Loader2 } from 'lucide-react'
+import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
+import Tesseract from 'tesseract.js'
 
 // Define types for the new rendering logic
 interface Mora {
@@ -30,6 +31,12 @@ function App() {
   const [convertedLines, setConvertedLines] = useState<ConvertedLine[]>([])
   const [isConverting, setIsConverting] = useState(false)
   const [isReady, setIsReady] = useState(false)
+
+  // OCR States
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false)
+  const [ocrProgress, setOcrProgress] = useState(0)
+  const [ocrStatus, setOcrStatus] = useState('')
+
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -234,11 +241,58 @@ function App() {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const reader = new FileReader()
-    reader.onload = () => {
-      alert('图片上传成功！请手动输入图片中的歌词文本，或使用OCR工具提取后粘贴。')
+    setIsOcrProcessing(true)
+    setOcrProgress(0)
+    setOcrStatus('初始化识别引擎...')
+
+    try {
+      const { data: { text } } = await Tesseract.recognize(
+        file,
+        'jpn',
+        {
+          logger: m => {
+            if (m.status === 'recognizing text') {
+              setOcrProgress(Math.round(m.progress * 100))
+              setOcrStatus(`正在识别文字... ${Math.round(m.progress * 100)}%`)
+            } else {
+              // Translate common status messages
+              const statusMap: Record<string, string> = {
+                'loading tesseract core': '加载核心组件...',
+                'initializing tesseract': '初始化引擎...',
+                'loading language traineddata': '加载语言包...',
+                'initializing api': '启动接口...',
+              }
+              setOcrStatus(statusMap[m.status] || m.status)
+            }
+          }
+        }
+      )
+
+      // Clean up text (remove empty lines, merge broken lines presumably?)
+      // Simple cleanup for now
+      const cleanText = text.split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0)
+        .join('\n')
+
+      setInputText(cleanText)
+
+      // Switch to text tab? Or notify success. 
+      // Just notify for now, user can click convert.
+      alert('图片识别成功！请检查识别结果并进行微调。')
+
+    } catch (err) {
+      console.error('OCR Error:', err)
+      alert('图片识别失败，请重试或手动输入。')
+    } finally {
+      setIsOcrProcessing(false)
+      setOcrProgress(0)
+      setOcrStatus('')
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
     }
-    reader.readAsDataURL(file)
   }
 
   const copyToClipboard = (text: string) => {
@@ -319,20 +373,43 @@ function App() {
 
               <TabsContent value="image">
                 <div
-                  className="border-2 border-dashed border-rose-200 rounded-lg p-8 text-center cursor-pointer hover:border-rose-400 hover:bg-rose-50/50 transition-colors"
-                  onClick={() => fileInputRef.current?.click()}
+                  className={`border-2 border-dashed border-rose-200 rounded-lg p-8 text-center cursor-pointer transition-colors relative overflow-hidden
+                    ${isOcrProcessing ? 'bg-rose-50 cursor-wait' : 'hover:border-rose-400 hover:bg-rose-50/50'}
+                  `}
+                  onClick={() => !isOcrProcessing && fileInputRef.current?.click()}
                 >
-                  <Upload className="w-10 h-10 text-rose-300 mx-auto mb-3" />
-                  <p className="text-sm text-gray-600 mb-1">点击上传图片或拖拽到此处</p>
-                  <p className="text-xs text-gray-400">支持 JPG, PNG 格式</p>
+                  {isOcrProcessing ? (
+                    <div className="flex flex-col items-center justify-center py-4">
+                      <ScanEye className="w-12 h-12 text-rose-500 animate-pulse mb-3" />
+                      <p className="text-rose-600 font-medium mb-2">{ocrStatus}</p>
+                      <div className="w-48 h-2 bg-rose-100 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-rose-500 transition-all duration-300"
+                          style={{ width: `${ocrProgress}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="w-10 h-10 text-rose-300 mx-auto mb-3" />
+                      <p className="text-sm text-gray-600 mb-1">点击上传图片自动识别 (OCR)</p>
+                      <p className="text-xs text-gray-400">支持 JPG, PNG · 自动识别日文</p>
+                    </>
+                  )}
+
                   <input
                     ref={fileInputRef}
                     type="file"
                     accept="image/*"
                     onChange={handleFileUpload}
                     className="hidden"
+                    disabled={isOcrProcessing}
                   />
                 </div>
+                <p className="text-xs text-amber-600 mt-3 flex items-center gap-1">
+                  <span className="inline-block w-4 h-4 rounded-full bg-amber-100 text-amber-600 text-center leading-4">!</span>
+                  OCR 识别可能存在误差，请在转换前核对文字。
+                </p>
               </TabsContent>
             </Tabs>
 
