@@ -26,11 +26,17 @@ function App() {
     const initKuroshiro = async () => {
       const kuroshiro = new Kuroshiro()
       try {
-        await kuroshiro.init(new KuromojiAnalyzer({ dictPath: '/dict' }))
+        // Construct the dictionary path based on the base URL
+        const dictPath = import.meta.env.BASE_URL === '/'
+          ? '/dict'
+          : `${import.meta.env.BASE_URL}dict`
+
+        await kuroshiro.init(new KuromojiAnalyzer({ dictPath }))
         kuroshiroRef.current = kuroshiro
         setIsReady(true)
       } catch (err) {
         console.error('Kuroshiro initialization failed:', err)
+        alert('词库初始化失败，请检查网络连接或刷新页面。错误详情：' + err)
       }
     }
     initKuroshiro()
