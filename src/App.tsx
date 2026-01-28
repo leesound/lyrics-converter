@@ -4,13 +4,12 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw } from 'lucide-react'
+import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw, AlertTriangle } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
 import Tesseract from 'tesseract.js'
 
-// Define types for the new rendering logic
 interface Mora {
   kana: string
   romaji: string
@@ -39,11 +38,29 @@ function App() {
   const [ocrStatus, setOcrStatus] = useState('')
   const [isDragging, setIsDragging] = useState(false)
 
+  // Debug State
+  const [debugInfo, setDebugInfo] = useState<string[]>([])
+
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const addDebugLog = (msg: string) => {
+    setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`])
+    console.log(`[Debug] ${msg}`)
+  }
+
   const initKuroshiro = async () => {
     setInitError(null)
+    setDebugInfo([])
+
+    // Check for file protocol
+    if (window.location.protocol === 'file:') {
+      const errorMsg = '错误：检测到 file:// 协议。本应用必须在服务器环境下运行（如 VS Code Live Server, Vite dev, 或部署到 Web）才能加载词库文件。'
+      setInitError(errorMsg)
+      addDebugLog(errorMsg)
+      return
+    }
+
     const kuroshiro = new Kuroshiro()
 
     // Construct the dictionary path
@@ -51,12 +68,14 @@ function App() {
       ? '/dict'
       : `${import.meta.env.BASE_URL}dict`
 
-    console.log('Initializing Kuroshiro with dictPath:', dictPath)
+    addDebugLog(`Base URL: ${import.meta.env.BASE_URL}`)
+    addDebugLog(`Resolved Dict Path: ${dictPath}`)
+    addDebugLog('Starting Kuroshiro init...')
 
     try {
-      // Create a timeout promise to prevent infinite hanging
+      // Create a timeout promise (10 seconds)
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('初始化超时，请检查网络或重试')), 15000)
+        setTimeout(() => reject(new Error('词库加载超时 (10秒)')), 10000)
       })
 
       // Race between initialization and timeout
@@ -67,9 +86,25 @@ function App() {
 
       kuroshiroRef.current = kuroshiro
       setIsReady(true)
+      addDebugLog('Kuroshiro init successful!')
     } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : String(err)
       console.error('Kuroshiro initialization failed:', err)
-      setInitError(err instanceof Error ? err.message : String(err))
+      setInitError(errorMsg)
+      addDebugLog(`Init Failed: ${errorMsg}`)
+
+      // Try to probe the dictionary availability
+      addDebugLog('Probing dictionary file...')
+      try {
+        const testUrl = `${dictPath}/base.dat.gz`
+        const response = await fetch(testUrl)
+        addDebugLog(`Probe ${testUrl}: Status ${response.status}`)
+        if (!response.ok) {
+          setInitError(`无法访问词库文件 (${response.status})。请检查部署配置。`)
+        }
+      } catch (probeErr) {
+        addDebugLog(`Probe error: ${String(probeErr)}`)
+      }
     }
   }
 
@@ -85,10 +120,8 @@ function App() {
       const char = chars[i]
       const nextChar = chars[i + 1]
 
-      // Helper to check for small kana (Yoon)
       const isSmallKana = (c: string) => /[ぁぃぅぇぉゃゅょ]/.test(c)
 
-      // 1. Check for Yoon (Contracted sounds like 'kya', 'sha')
       if (nextChar && isSmallKana(nextChar)) {
         const combined = char + nextChar
         moras.push({
@@ -96,17 +129,13 @@ function App() {
           romaji: wanakana.toRomaji(combined),
           type: 'yoon'
         })
-        i++ // Skip next char
+        i++
         continue
       }
 
-      // 2. Check for Sokuon (Small 'tsu')
       if (char === 'っ' || char === 'ッ') {
-        // Predict next consonant for proper Romaji (e.g., 'pp', 'tt')
         let nextConsonant = ''
         if (nextChar) {
-          // If next is another kana, convert it to Romaji to get the first letter
-          // Handle case where next sound is Yoon (e.g. 'っきゃ' -> kkya)
           if (chars[i + 2] && isSmallKana(chars[i + 2])) {
             const nextMoraRomaji = wanakana.toRomaji(nextChar + chars[i + 2])
             nextConsonant = nextMoraRomaji.charAt(0)
@@ -120,13 +149,12 @@ function App() {
 
         moras.push({
           kana: char,
-          romaji: nextConsonant, // Display the doubled consonant (e.g. 'p')
+          romaji: nextConsonant,
           type: 'sokuon'
         })
         continue
       }
 
-      // 3. Check for Long Vowel
       if (char === 'ー') {
         moras.push({
           kana: char,
@@ -136,7 +164,6 @@ function App() {
         continue
       }
 
-      // 4. Normal Kana
       moras.push({
         kana: char,
         romaji: wanakana.toRomaji(char),
@@ -487,13 +514,36 @@ function App() {
               </Button>
             </div>
 
+            {/* Error & Debug Display */}
             {initError && (
               <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
-                <p className="font-bold mb-1">初始化失败</p>
-                <p>{initError}</p>
-                <p className="mt-1 opacity-75">可能是网络问题导致词库加载超时。请点击上方的重试按钮。</p>
+                <div className="flex items-center gap-2 font-bold mb-1">
+                  <AlertTriangle className="w-4 h-4" />
+                  初始化失败
+                </div>
+                <p className="mb-2">{initError}</p>
+
+                {/* Debug Logs */}
+                <div className="mt-2 pt-2 border-t border-red-100 text-[10px] font-mono opacity-80 max-h-32 overflow-y-auto">
+                  <p className="font-bold mb-1">调试信息 (请截图反馈):</p>
+                  {debugInfo.map((log, i) => (
+                    <div key={i}>{log}</div>
+                  ))}
+                </div>
+
+                <p className="mt-2 opacity-75">提示：请尝试刷新页面，或检查网络是否能访问 /dict 目录下的文件。</p>
               </div>
             )}
+
+            <div className="mt-2 text-center">
+              <button
+                onClick={() => setInitError(initError ? null : '手动开启调试模式')}
+                className="text-[10px] text-gray-300 hover:text-gray-500"
+              >
+                {initError ? '' : 'v1.0.3 Debug'}
+              </button>
+            </div>
+
           </CardContent>
         </Card>
 
