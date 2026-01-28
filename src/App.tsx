@@ -102,7 +102,7 @@ function App() {
         // 1. Fix Sokuon: " tsu " followed by consonant -> double consonant
         //    Looking for patterns like "hetsu he" -> "hehhe"
         let finalRomaji = romajiRaw
-          .replace(/\s+(tsu|tu)\s+([ksthmyrwgzbpdj])/gi, (match, sokuon, nextConsonant) => {
+          .replace(/\s+(tsu|tu)\s+([ksthmyrwgzbpdj])/gi, (_match, _sokuon, nextConsonant) => {
             return ' ' + nextConsonant + nextConsonant
           })
           // Fix: "hetsu" at the end of a word/line? 
