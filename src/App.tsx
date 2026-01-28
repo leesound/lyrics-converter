@@ -9,15 +9,25 @@ import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
 
-interface LyricLine {
-  original: string
-  hiragana: string
+// Define types for the new rendering logic
+interface Mora {
+  kana: string
   romaji: string
+  type: 'normal' | 'sokuon' | 'yoon' | 'long'
+}
+
+interface Word {
+  original: string
+  moras: Mora[]
+}
+
+interface ConvertedLine {
+  words: Word[]
 }
 
 function App() {
   const [inputText, setInputText] = useState('')
-  const [convertedLines, setConvertedLines] = useState<LyricLine[]>([])
+  const [convertedLines, setConvertedLines] = useState<ConvertedLine[]>([])
   const [isConverting, setIsConverting] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
@@ -42,6 +52,80 @@ function App() {
     }
     initKuroshiro()
   }, [])
+
+  const parseMoras = (hiragana: string): Mora[] => {
+    const moras: Mora[] = []
+    const chars = hiragana.split('')
+
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i]
+      const nextChar = chars[i + 1]
+
+      // Helper to check for small kana (Yoon)
+      const isSmallKana = (c: string) => /[ぁぃぅぇぉゃゅょ]/.test(c)
+
+      // 1. Check for Yoon (Contracted sounds like 'kya', 'sha')
+      if (nextChar && isSmallKana(nextChar)) {
+        const combined = char + nextChar
+        moras.push({
+          kana: combined,
+          romaji: wanakana.toRomaji(combined),
+          type: 'yoon'
+        })
+        i++ // Skip next char
+        continue
+      }
+
+      // 2. Check for Sokuon (Small 'tsu')
+      if (char === 'っ' || char === 'ッ') {
+        // Predict next consonant for proper Romaji (e.g., 'pp', 'tt')
+        let nextConsonant = ''
+        if (nextChar) {
+          // If next is another kana, convert it to Romaji to get the first letter
+          // Handle case where next sound is Yoon (e.g. 'っきゃ' -> kkya)
+          if (chars[i + 2] && isSmallKana(chars[i + 2])) {
+            const nextMoraRomaji = wanakana.toRomaji(nextChar + chars[i + 2])
+            nextConsonant = nextMoraRomaji.charAt(0)
+          } else {
+            const nextMoraRomaji = wanakana.toRomaji(nextChar)
+            nextConsonant = nextMoraRomaji.charAt(0)
+          }
+        } else {
+          // End of word sokuon -> apostrophe or nothing? User prompt implies explicit handling.
+          // Let's use apostrophe for safety or just blank if it's strictly mute.
+          // But typically it doubles the 'space' or glottal stop.
+          nextConsonant = "'"
+        }
+
+        moras.push({
+          kana: char,
+          romaji: nextConsonant, // Display the doubled consonant (e.g. 'p')
+          type: 'sokuon'
+        })
+        continue
+      }
+
+      // 3. Check for Long Vowel
+      if (char === 'ー') {
+        moras.push({
+          kana: char,
+          romaji: '-',
+          type: 'long'
+        })
+        continue
+      }
+
+      // 4. Normal Kana
+      // Ensure Katakana is converted to Hiragana for consistency if not already
+      // But wanakana.toRomaji handles Katakana too.
+      moras.push({
+        kana: char,
+        romaji: wanakana.toRomaji(char),
+        type: 'normal'
+      })
+    }
+    return moras
+  }
 
   const convertText = async () => {
     if (!inputText.trim() || !kuroshiroRef.current || !isReady) return
@@ -72,65 +156,72 @@ function App() {
 
       const lines = inputText.split('\n').filter(line => line.trim())
 
-      const converted: LyricLine[] = await Promise.all(lines.map(async (line) => {
+      // Process each line
+      const convertedResult: ConvertedLine[] = await Promise.all(lines.map(async (line) => {
         const trimmedLine = line.trim()
 
-        // 1. Apply custom dictionary fixes to raw text for better conversion
-        const textForConversion = applyCustomReplacements(trimmedLine)
-
-        // 2. Convert to Hiragana using Kuroshiro (mode: normal to keep connections)
-        const hiraganaRaw = await kuroshiroRef.current!.convert(textForConversion, {
+        // Use 'furigana' mode for easy parsing of tokens
+        // HTML: <ruby>君<rp>(</rp><rt>きみ</rt><rp>)</rp></ruby>
+        const rubyHtml = await kuroshiroRef.current!.convert(applyCustomReplacements(trimmedLine), {
           to: 'hiragana',
-          mode: 'normal'
+          mode: 'furigana'
         })
 
-        // Post-process Hiragana: 
-        // - Handle 'ゔ' -> 'ぶ' explicitly if Kuroshiro missed it
-        // - Ensure all characters are Hiragana (Kuroshiro can leave some Katakana)
-        let finalHiragana = wanakana.toHiragana(hiraganaRaw, { passRomaji: true })
-        finalHiragana = finalHiragana.replace(/ゔ/g, 'ぶ')
+        // Parse HTML string to extract tokens
+        const wordList: Word[] = []
 
-        // 3. Convert to Romaji
-        // Use 'spaced' mode to get basic spacing
-        let romajiRaw = await kuroshiroRef.current!.convert(textForConversion, {
-          to: 'romaji',
-          mode: 'spaced',
-          romajiSystem: 'hepburn'
+        // Create a temporary DOM element to parse
+        const tempDiv = document.createElement('div')
+        tempDiv.innerHTML = rubyHtml
+
+        // Iterate over child nodes
+        tempDiv.childNodes.forEach(node => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            // Plain text (Kana, punctuation)
+            const text = node.textContent?.trim() || ''
+            if (!text) return
+
+            // For plain text, we still want to separate by Mora!
+            // We should ensure it's Hiragana first if it's Katakana?
+            // Wanakana toHiragana is safe.
+            const hiraganaText = wanakana.toHiragana(text, { passRomaji: true })
+
+            wordList.push({
+              original: '', // No kanji above
+              moras: parseMoras(hiraganaText)
+            })
+          } else if (node.nodeName === 'RUBY') {
+            // It's a Kanji word
+            let kanji = ''
+            let reading = ''
+
+            // Extract Kanji and Reading
+            // <ruby> 漢字 <rp>(</rp> <rt>かんじ</rt> <rp>)</rp> </ruby>
+            node.childNodes.forEach(child => {
+              if (child.nodeType === Node.TEXT_NODE) {
+                kanji += child.textContent
+              } else if (child.nodeName === 'RT') {
+                reading += child.textContent
+              }
+            })
+
+            // Clean reading (remove spaces if any)
+            reading = reading.trim()
+
+            // Post-process reading: Ensure 'ゔ' -> 'ぶ'
+            reading = reading.replace(/ゔ/g, 'ぶ')
+
+            wordList.push({
+              original: kanji,
+              moras: parseMoras(reading)
+            })
+          }
         })
 
-        // Post-process Romaji to fix "hetsu" and spacing errors
-        // 1. Fix Sokuon: " tsu " followed by consonant -> double consonant
-        //    Looking for patterns like "hetsu he" -> "hehhe"
-        let finalRomaji = romajiRaw
-          .replace(/\s+(tsu|tu)\s+([ksthmyrwgzbpdj])/gi, (_match, _sokuon, nextConsonant) => {
-            return ' ' + nextConsonant + nextConsonant
-          })
-          // Fix: "hetsu" at the end of a word/line? 
-          // User wanted "hepp" for "ヘッ". This implies the next sound P is anticipated, 
-          // or it's a stylistic choice. 
-          // Standard Hepburn uses apostrophe or nothing.
-          // Let's being safe: replace " tsu" at end of tokens with apostrophe ' 
-          // if it wasn't caught by the double-consonant rule.
-          .replace(/\s(tsu|tu)\s/gi, " ' ")
-          .replace(/\s(tsu|tu)$/gi, "'")
-
-          // Fix: "no n" -> "non" (Common error with 'n' kana)
-          // Look for " n " followed by vowel or space? No, "no n" is "no" + "n".
-          // If kuroshiro output "no n", join them? This is risky.
-          // But "non" (flat) is one word. The custom replacement (revert preprocess) should fix "non".
-
-          // Clean up multiple spaces
-          .replace(/\s+/g, ' ')
-          .trim()
-
-        return {
-          original: trimmedLine,
-          hiragana: finalHiragana,
-          romaji: finalRomaji
-        }
+        return { words: wordList }
       }))
 
-      setConvertedLines(converted)
+      setConvertedLines(convertedResult)
     } catch (error) {
       console.error('Conversion error:', error)
       alert('转换过程中出错，请重试')
@@ -152,6 +243,7 @@ function App() {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
+    alert('已复制到剪贴板！')
   }
 
   const clearAll = () => {
@@ -164,7 +256,9 @@ function App() {
 
     let result = ''
     convertedLines.forEach(line => {
-      result += `${line.original}\n${line.hiragana}\n${line.romaji}\n\n`
+      const sentence = line.words.map(w => w.original || w.moras.map(m => m.kana).join('')).join('')
+      const reading = line.words.map(w => w.moras.map(m => m.kana).join('')).join(' ')
+      result += `${sentence}\n${reading}\n\n`
     })
 
     copyToClipboard(result.trim())
@@ -183,7 +277,7 @@ function App() {
               <h1 className="text-xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">
                 日文歌词转换器
               </h1>
-              <p className="text-xs text-gray-500">日语歌词 → 平假名 + 罗马音</p>
+              <p className="text-xs text-gray-500">日语歌词 → 平假名 + 罗马音（精确对齐）</p>
             </div>
           </div>
         </div>
@@ -239,10 +333,6 @@ function App() {
                     className="hidden"
                   />
                 </div>
-                <p className="text-xs text-amber-600 mt-3 flex items-center gap-1">
-                  <span className="inline-block w-4 h-4 rounded-full bg-amber-100 text-amber-600 text-center leading-4">!</span>
-                  图片上传后请手动输入歌词文本，或使用OCR工具提取
-                </p>
               </TabsContent>
             </Tabs>
 
@@ -296,50 +386,56 @@ function App() {
                   className="text-rose-500 hover:text-rose-600 hover:bg-rose-50"
                 >
                   <Copy className="w-4 h-4 mr-1" />
-                  复制全部
+                  复制文本
                 </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="space-y-6">
-                {convertedLines.map((line, index) => (
-                  <div
-                    key={index}
-                    className="bg-gradient-to-r from-rose-50/50 to-pink-50/50 rounded-xl p-4 border border-rose-100"
-                  >
-                    <div className="mb-3">
-                      <span className="text-xs text-rose-400 font-medium mb-1 block">原文</span>
-                      <p className="text-lg font-medium text-gray-800">{line.original}</p>
-                    </div>
+              <div className="space-y-8">
+                {convertedLines.map((line, lineIdx) => (
+                  <div key={lineIdx} className="bg-white/50 rounded-xl p-4 border border-rose-100 shadow-sm">
+                    <div className="flex flex-wrap items-end gap-x-3 gap-y-6">
+                      {/* Render each word */}
+                      {line.words.map((word, wordIdx) => (
+                        <div key={wordIdx} className="flex flex-col items-center">
+                          {/* Top: Original Kanji/Text */}
+                          {word.original && (
+                            <span className="text-lg font-bold text-gray-800 mb-1 leading-none">
+                              {word.original}
+                            </span>
+                          )}
 
-                    <div className="mb-3">
-                      <span className="text-xs text-pink-400 font-medium mb-1 block">平假名</span>
-                      <p className="text-base text-gray-700 font-japanese">{line.hiragana}</p>
-                    </div>
+                          {/* Bottom: Moras (Kana + Romaji) */}
+                          <div className="flex items-end gap-[1px]">
+                            {word.moras.map((mora, moraIdx) => (
+                              <div key={moraIdx} className="flex flex-col items-center group">
+                                {/* Kana */}
+                                <span
+                                  className={`text-sm font-japanese leading-none mb-1 transition-colors
+                                                ${mora.type === 'sokuon' ? 'text-rose-600 font-bold' : ''}
+                                                ${mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-500' : 'text-gray-600'}
+                                              `}
+                                >
+                                  {mora.kana}
+                                </span>
 
-                    <div>
-                      <span className="text-xs text-purple-400 font-medium mb-1 block">罗马音</span>
-                      <p className="text-base text-gray-600 font-mono tracking-wide">{line.romaji}</p>
+                                {/* Romaji */}
+                                <span
+                                  className={`text-[10px] font-mono leading-none tracking-tighter uppercase
+                                                ${mora.type === 'sokuon' ? 'text-rose-500 font-bold' : ''}
+                                                ${mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-400' : 'text-gray-400'}
+                                              `}
+                                >
+                                  {mora.romaji}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-rose-100">
-                <div className="flex flex-wrap gap-4 text-xs text-gray-500">
-                  <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-full bg-rose-400"></span>
-                    <span>原文</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-full bg-pink-400"></span>
-                    <span>平假名（五十音）</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="w-3 h-3 rounded-full bg-purple-400"></span>
-                    <span>罗马音（空格分隔）</span>
-                  </div>
-                </div>
               </div>
             </CardContent>
           </Card>
