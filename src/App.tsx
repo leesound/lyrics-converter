@@ -257,16 +257,87 @@ function App() {
     }
   }
 
+  const preprocessImage = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        if (!ctx) {
+          reject(new Error('Could not get canvas context'))
+          return
+        }
+
+        // 1. Resize: Ensure minimal resolution (height at least 1000px if possible)
+        let width = img.width
+        let height = img.height
+        const minHeight = 1000
+        if (height < minHeight) {
+          const scale = minHeight / height
+          width = width * scale
+          height = minHeight
+        }
+
+        canvas.width = width
+        canvas.height = height
+
+        // Draw original image scaled
+        ctx.drawImage(img, 0, 0, width, height)
+
+        // 2. Image Processing
+        const imageData = ctx.getImageData(0, 0, width, height)
+        const data = imageData.data
+
+        // Brightness/Contrast params
+        const contrast = 1.5 // +50% contrast
+        const intercept = 128 * (1 - contrast)
+
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i]
+          const g = data[i + 1]
+          const b = data[i + 2]
+
+          // Grayscale (Luminance)
+          let gray = 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+          // Contrast
+          gray = gray * contrast + intercept
+
+          // Binarization (Thresholding)
+          // Threshold 180 (slightly higher to catch faint text)
+          const threshold = 180
+          const val = gray > threshold ? 255 : 0
+
+          data[i] = val
+          data[i + 1] = val
+          data[i + 2] = val
+        }
+
+        ctx.putImageData(imageData, 0, 0)
+        resolve(canvas.toDataURL('image/png'))
+      }
+      img.onerror = reject
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
   const processFile = async (file: File) => {
     if (!file) return
 
     setIsOcrProcessing(true)
     setOcrProgress(0)
-    setOcrStatus('初始化识别引擎...')
+    setOcrStatus('正在优化图片...')
 
     try {
+      // 1. Preprocess
+      addDebugLog('Preprocessing image...')
+      const processedImage = await preprocessImage(file)
+      addDebugLog('Image preprocessing done.')
+
+      // 2. Recognize
+      setOcrStatus('初始化识别引擎...')
       const { data: { text } } = await Tesseract.recognize(
-        file,
+        processedImage,
         'jpn',
         {
           logger: m => {
@@ -286,17 +357,20 @@ function App() {
         }
       )
 
+      // Post-processing: remove empty lines and white spaces for Japanese
       const cleanText = text.split('\n')
-        .map(line => line.trim())
+        .map(line => line.trim().replace(/\s+/g, ''))
         .filter(line => line.length > 0)
         .join('\n')
 
       setInputText(cleanText)
-      alert('图片识别成功！请检查识别结果并进行微调。')
+      alert('识别完成！已自动增强清晰度。')
 
     } catch (err) {
       console.error('OCR Error:', err)
-      alert('图片识别失败，请重试或手动输入。')
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      alert('图片识别失败，已记录错误日志。')
+      addDebugLog(`OCR Failed: ${errorMsg}`)
     } finally {
       setIsOcrProcessing(false)
       setOcrProgress(0)
