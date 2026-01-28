@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Copy, Trash2, Upload, Music, Languages, Type, Loader2 } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
+import * as wanakana from 'wanakana'
 
 interface LyricLine {
   original: string
@@ -73,9 +74,12 @@ function App() {
           mode: 'normal'
         })
 
+        // Ensure all katakana is converted to hiragana (Kuroshiro might skip katakana input)
+        const finalHiragana = wanakana.toHiragana(hiraganaNormal, { passRomaji: true })
+
         return {
           original: trimmedLine,
-          hiragana: hiraganaNormal,
+          hiragana: finalHiragana,
           romaji: romaji
         }
       }))
