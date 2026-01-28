@@ -45,19 +45,31 @@ function App() {
   const initKuroshiro = async () => {
     setInitError(null)
     const kuroshiro = new Kuroshiro()
-    try {
-      // Construct the dictionary path based on the base URL
-      const dictPath = import.meta.env.BASE_URL === '/'
-        ? '/dict'
-        : `${import.meta.env.BASE_URL}dict`
 
-      console.log('Initializing Kuroshiro with dictPath:', dictPath)
-      await kuroshiro.init(new KuromojiAnalyzer({ dictPath }))
+    // Construct the dictionary path
+    const dictPath = import.meta.env.BASE_URL === '/'
+      ? '/dict'
+      : `${import.meta.env.BASE_URL}dict`
+
+    console.log('Initializing Kuroshiro with dictPath:', dictPath)
+
+    try {
+      // Create a timeout promise to prevent infinite hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('初始化超时，请检查网络或重试')), 15000)
+      })
+
+      // Race between initialization and timeout
+      await Promise.race([
+        kuroshiro.init(new KuromojiAnalyzer({ dictPath })),
+        timeoutPromise
+      ])
+
       kuroshiroRef.current = kuroshiro
       setIsReady(true)
     } catch (err) {
       console.error('Kuroshiro initialization failed:', err)
-      setInitError(String(err))
+      setInitError(err instanceof Error ? err.message : String(err))
     }
   }
 
@@ -439,7 +451,7 @@ function App() {
               >
                 {!isReady ? (
                   initError ? (
-                    <>初始化失败</>
+                    <>初始化失败 (点击右侧重试)</>
                   ) : (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -476,10 +488,11 @@ function App() {
             </div>
 
             {initError && (
-              <p className="text-xs text-red-500 mt-2 text-center">
-                词库初始化失败: {initError} <br />
-                请检查网络连接，或尝试刷新页面。
-              </p>
+              <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
+                <p className="font-bold mb-1">初始化失败</p>
+                <p>{initError}</p>
+                <p className="mt-1 opacity-75">可能是网络问题导致词库加载超时。请点击上方的重试按钮。</p>
+              </div>
             )}
           </CardContent>
         </Card>
