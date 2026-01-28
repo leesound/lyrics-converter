@@ -1,0 +1,112 @@
+/* 日文歌词转换器样式 */
+
+/* 导入日文字体 */
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&family=Noto+Serif+JP:wght@400;500;700&display=swap');
+
+/* 日文字体类 */
+.font-japanese {
+  font-family: 'Noto Sans JP', 'Noto Serif JP', 'Hiragino Kaku Gothic Pro', 'Meiryo', 'MS PGothic', sans-serif;
+}
+
+/* 平滑滚动 */
+html {
+  scroll-behavior: smooth;
+}
+
+/* 自定义滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #fff1f2;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #fda4af;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f472b6;
+}
+
+/* 文本区域焦点效果 */
+textarea:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.15);
+}
+
+/* 动画效果 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 结果卡片动画 */
+.bg-gradient-to-r.from-rose-50\/50 {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.bg-gradient-to-r.from-rose-50\/50:nth-child(1) { animation-delay: 0.05s; }
+.bg-gradient-to-r.from-rose-50\/50:nth-child(2) { animation-delay: 0.1s; }
+.bg-gradient-to-r.from-rose-50\/50:nth-child(3) { animation-delay: 0.15s; }
+.bg-gradient-to-r.from-rose-50\/50:nth-child(4) { animation-delay: 0.2s; }
+.bg-gradient-to-r.from-rose-50\/50:nth-child(5) { animation-delay: 0.25s; }
+
+/* 按钮悬停效果 */
+button {
+  transition: all 0.2s ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+/* 拖拽区域动画 */
+.border-dashed {
+  transition: all 0.3s ease;
+}
+
+/* 罗马音字体优化 */
+.font-mono {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Code', monospace;
+  letter-spacing: 0.05em;
+}
+
+/* 响应式调整 */
+@media (max-width: 640px) {
+  .max-w-4xl {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  header .text-xl {
+    font-size: 1.125rem;
+  }
+}
+
+/* 选中文字样式 */
+::selection {
+  background: rgba(251, 113, 133, 0.3);
+  color: inherit;
+}
+
+/* 标签页样式优化 */
+[data-state="active"] {
+  font-weight: 500;
+}
+
+/* 卡片悬停效果 */
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px -5px rgba(251, 113, 133, 0.2);
+}
