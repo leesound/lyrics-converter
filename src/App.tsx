@@ -745,20 +745,7 @@ function App() {
                 </div>
               )}
 
-              {/* Debug Logs Display (Controlled by showDebug) */}
-              {(showDebug || initError) && (
-                <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 animate-in fade-in slide-in-from-top-2">
-                  <p className="font-bold mb-2 flex items-center gap-2">
-                    <ScanEye className="w-3 h-3" />
-                    调试日志
-                  </p>
-                  <div className="font-mono text-[10px] opacity-90 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                    {debugInfo.length === 0 ? '暂无日志...' : debugInfo.map((log, i) => (
-                      <div key={`log-${i}`} className="border-b border-gray-100 last:border-0 py-0.5">{log}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
+
             </div>
 
 
