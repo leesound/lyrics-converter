@@ -529,32 +529,34 @@ function App() {
             </div>
 
             {/* Error & Debug Display */}
-            {/* Error Display (Only real errors) */}
-            {initError && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
-                <div className="flex items-center gap-2 font-bold mb-1">
-                  <AlertTriangle className="w-4 h-4" />
-                  初始化失败
+            {/* Error & Debug Display - Wrapped in stable containers to prevent layout shift crashes */}
+            <div className="min-h-[20px] transition-all duration-300 ease-in-out">
+              {initError && (
+                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 animate-in fade-in slide-in-from-top-2">
+                  <div className="flex items-center gap-2 font-bold mb-1">
+                    <AlertTriangle className="w-4 h-4" />
+                    初始化失败
+                  </div>
+                  <p className="mb-2">{initError}</p>
+                  <p className="mt-2 opacity-75">提示：请尝试刷新页面，或检查网络是否能访问 /dict 目录下的文件。</p>
                 </div>
-                <p className="mb-2">{initError}</p>
-                <p className="mt-2 opacity-75">提示：请尝试刷新页面，或检查网络是否能访问 /dict 目录下的文件。</p>
-              </div>
-            )}
+              )}
 
-            {/* Debug Logs Display (Controlled by showDebug) */}
-            {(showDebug || initError) && (
-              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
-                <p className="font-bold mb-2 flex items-center gap-2">
-                  <ScanEye className="w-3 h-3" />
-                  调试日志
-                </p>
-                <div className="font-mono text-[10px] opacity-90 max-h-32 overflow-y-auto whitespace-pre-wrap">
-                  {debugInfo.length === 0 ? '暂无日志...' : debugInfo.map((log, i) => (
-                    <div key={i} className="border-b border-gray-100 last:border-0 py-0.5">{log}</div>
-                  ))}
+              {/* Debug Logs Display (Controlled by showDebug) */}
+              {(showDebug || initError) && (
+                <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600 animate-in fade-in slide-in-from-top-2">
+                  <p className="font-bold mb-2 flex items-center gap-2">
+                    <ScanEye className="w-3 h-3" />
+                    调试日志
+                  </p>
+                  <div className="font-mono text-[10px] opacity-90 max-h-32 overflow-y-auto whitespace-pre-wrap">
+                    {debugInfo.length === 0 ? '暂无日志...' : debugInfo.map((log, i) => (
+                      <div key={`log-${i}`} className="border-b border-gray-100 last:border-0 py-0.5">{log}</div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
 
             <div className="mt-2 text-center">
               <button
