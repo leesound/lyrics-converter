@@ -284,8 +284,8 @@ function App() {
     try {
       const lang = ocrVertical ? 'jpn_vert' : 'jpn'
       const langPath = ocrHighAccuracy
-        ? 'https://tessdata.projectnaptha.com/4.0.0_best'
-        : 'https://tessdata.projectnaptha.com/4.0.0'
+        ? 'https://tessdata.projectnaptha.com/4.0.0' // Use standard (integer) model instead of best (float) to avoid DotProductSSE crash
+        : 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_fast' // Standard mode uses fast model
 
       addDebugLog(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
 
