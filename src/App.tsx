@@ -284,8 +284,8 @@ function App() {
     try {
       const lang = ocrVertical ? 'jpn_vert' : 'jpn'
       const langPath = ocrHighAccuracy
-        ? 'https://tessdata.projectnaptha.com/4.0.0' // Use standard (integer) model instead of best (float) to avoid DotProductSSE crash
-        : 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_fast' // Standard mode uses fast model
+        ? 'https://tessdata.projectnaptha.com/4.0.0_best' // Revert to float model (Best) now that we force non-SIMD core
+        : 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_fast'
 
       addDebugLog(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
 
@@ -293,10 +293,17 @@ function App() {
       // Standard uses default cache. High Acc uses 'best-data' prefix.
       const cachePath = ocrHighAccuracy ? 'best-data' : undefined
 
+      // Force non-SIMD core for High Accuracy to prevent DotProductSSE crash
+      // Pointing directly to the .js file bypasses SIMD detection
+      const corePath = ocrHighAccuracy
+        ? 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.0.0/tesseract-core.wasm.js'
+        : undefined
+
       const worker = await Tesseract.createWorker(
         lang,
         1,
         {
+          corePath,
           langPath,
           cachePath,
           logger: m => {
