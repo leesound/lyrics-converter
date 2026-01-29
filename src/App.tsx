@@ -40,6 +40,7 @@ function App() {
 
   // Debug State
   const [debugInfo, setDebugInfo] = useState<string[]>([])
+  const [showDebug, setShowDebug] = useState(false)
 
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -516,6 +517,7 @@ function App() {
             </div>
 
             {/* Error & Debug Display */}
+            {/* Error Display (Only real errors) */}
             {initError && (
               <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600">
                 <div className="flex items-center gap-2 font-bold mb-1">
@@ -523,25 +525,31 @@ function App() {
                   初始化失败
                 </div>
                 <p className="mb-2">{initError}</p>
+                <p className="mt-2 opacity-75">提示：请尝试刷新页面，或检查网络是否能访问 /dict 目录下的文件。</p>
+              </div>
+            )}
 
-                {/* Debug Logs */}
-                <div className="mt-2 pt-2 border-t border-red-100 text-[10px] font-mono opacity-80 max-h-32 overflow-y-auto">
-                  <p className="font-bold mb-1">调试信息 (请截图反馈):</p>
-                  {debugInfo.map((log, i) => (
-                    <div key={i}>{log}</div>
+            {/* Debug Logs Display (Controlled by showDebug) */}
+            {(showDebug || initError) && (
+              <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+                <p className="font-bold mb-2 flex items-center gap-2">
+                  <ScanEye className="w-3 h-3" />
+                  调试日志
+                </p>
+                <div className="font-mono text-[10px] opacity-90 max-h-32 overflow-y-auto whitespace-pre-wrap">
+                  {debugInfo.length === 0 ? '暂无日志...' : debugInfo.map((log, i) => (
+                    <div key={i} className="border-b border-gray-100 last:border-0 py-0.5">{log}</div>
                   ))}
                 </div>
-
-                <p className="mt-2 opacity-75">提示：请尝试刷新页面，或检查网络是否能访问 /dict 目录下的文件。</p>
               </div>
             )}
 
             <div className="mt-2 text-center">
               <button
-                onClick={() => setInitError(initError ? null : '手动开启调试模式')}
-                className="text-[10px] text-gray-300 hover:text-gray-500"
+                onClick={() => setShowDebug(!showDebug)}
+                className="text-[10px] text-gray-300 hover:text-gray-500 transition-colors"
               >
-                {initError ? '' : 'v1.0.3 Debug'}
+                v1.0.4 {showDebug ? 'Hide Debug' : 'Debug'}
               </button>
             </div>
 
