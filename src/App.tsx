@@ -381,7 +381,6 @@ function App() {
               <h1 className="text-xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">
                 日文歌词转换器
               </h1>
-              <p className="text-xs text-gray-500">日语歌词 → 平假名 + 罗马音（精确对齐）</p>
             </div>
           </div>
         </div>
@@ -599,10 +598,10 @@ function App() {
 
                                 {/* Romaji */}
                                 <span
-                                  className={`text-[10px] font-mono leading-none tracking-tighter uppercase
-                                                ${mora.type === 'sokuon' ? 'text-rose-500 font-bold' : ''}
-                                                ${mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-400' : 'text-gray-400'}
-                                              `}
+                                  className={`text-xs font-mono leading-none tracking-tighter uppercase font-medium
+                                    ${mora.type === 'sokuon' ? 'text-rose-600 font-bold' : ''}
+                                    ${mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-600' : 'text-gray-600'}
+                                  `}
                                 >
                                   {mora.romaji}
                                 </span>
@@ -627,9 +626,7 @@ function App() {
         )}
       </main>
 
-      <footer className="text-center py-6 text-xs text-gray-400">
-        <p>日文歌词转换器 · 支持平假名与罗马音转换</p>
-      </footer>
+
     </div>
   )
 }
