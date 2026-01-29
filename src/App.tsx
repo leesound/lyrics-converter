@@ -761,14 +761,7 @@ function App() {
               )}
             </div>
 
-            <div className="mt-2 text-center">
-              <button
-                onClick={() => setShowDebug(!showDebug)}
-                className="text-[10px] text-gray-300 hover:text-gray-500 transition-colors"
-              >
-                v1.0.4 {showDebug ? 'Hide Debug' : 'Debug'}
-              </button>
-            </div>
+
 
           </CardContent>
         </Card>
