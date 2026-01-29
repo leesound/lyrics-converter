@@ -51,16 +51,9 @@ function App() {
   }, [baiduApiKey, baiduSecretKey])
 
   // Helpers & Refs
-  const [debugInfo, setDebugInfo] = useState<string[]>([])
-  const [showDebug, setShowDebug] = useState(false)
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isInitialized = useRef(false)
-
-  const addDebugLog = (msg: string) => {
-    setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`])
-    console.log(`[Debug] ${msg}`)
-  }
 
   // ... (existing debug state) ...
 
@@ -131,7 +124,7 @@ function App() {
       console.error('Baidu OCR Error:', err)
       const errorMsg = err instanceof Error ? err.message : String(err)
       alert(`云端识别出错：${errorMsg}`)
-      addDebugLog(`Baidu Failed: ${errorMsg}`)
+      console.log(`Baidu Failed: ${errorMsg}`)
     }
   }
 
@@ -148,13 +141,13 @@ function App() {
     isInitialized.current = true
 
     setInitError(null)
-    setDebugInfo([])
+
 
     // Check for file protocol
     if (window.location.protocol === 'file:') {
       const errorMsg = '错误：检测到 file:// 协议。本应用必须在服务器环境下运行（如 VS Code Live Server, Vite dev, 或部署到 Web）才能加载词库文件。'
       setInitError(errorMsg)
-      addDebugLog(errorMsg)
+      console.log(errorMsg)
       return
     }
 
@@ -165,9 +158,9 @@ function App() {
       ? '/dict'
       : `${import.meta.env.BASE_URL}dict`
 
-    addDebugLog(`Base URL: ${import.meta.env.BASE_URL}`)
-    addDebugLog(`Resolved Dict Path: ${dictPath}`)
-    addDebugLog('Starting Kuroshiro init...')
+    console.log(`Base URL: ${import.meta.env.BASE_URL}`)
+    console.log(`Resolved Dict Path: ${dictPath}`)
+    console.log('Starting Kuroshiro init...')
 
     try {
       // Create a timeout promise (15 seconds) - increased for slow connections
@@ -183,25 +176,25 @@ function App() {
 
       kuroshiroRef.current = kuroshiro
       setIsReady(true)
-      addDebugLog('Kuroshiro init successful!')
+      console.log('Kuroshiro init successful!')
     } catch (err) {
       isInitialized.current = false // Reset init flag on error to allow retry
       const errorMsg = err instanceof Error ? err.message : String(err)
       console.error('Kuroshiro initialization failed:', err)
       setInitError(errorMsg)
-      addDebugLog(`Init Failed: ${errorMsg}`)
+      console.log(`Init Failed: ${errorMsg}`)
 
       // Try to probe the dictionary availability
-      addDebugLog('Probing dictionary file...')
+      console.log('Probing dictionary file...')
       try {
         const testUrl = `${dictPath}/base.dat.gz`
         const response = await fetch(testUrl)
-        addDebugLog(`Probe ${testUrl}: Status ${response.status}`)
+        console.log(`Probe ${testUrl}: Status ${response.status}`)
         if (!response.ok) {
           setInitError(`无法访问词库文件 (${response.status})。请检查部署配置。`)
         }
       } catch (probeErr) {
-        addDebugLog(`Probe error: ${String(probeErr)}`)
+        console.log(`Probe error: ${String(probeErr)}`)
       }
     }
   }
@@ -378,7 +371,7 @@ function App() {
         ? 'https://tessdata.projectnaptha.com/4.0.0_best' // Revert to float model (Best) now that we force non-SIMD core
         : 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_fast'
 
-      addDebugLog(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
+      console.log(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
 
       // Determine cache key to avoid collision between Standard (jpn) and High Acc (jpn-best)
       // Standard uses default cache. High Acc uses 'best-data' prefix.
@@ -430,7 +423,7 @@ function App() {
       console.error('OCR Error:', err)
       const errorMsg = err instanceof Error ? err.message : String(err)
       alert('图片识别失败，已记录错误日志。')
-      addDebugLog(`OCR Failed: ${errorMsg}`)
+      console.log(`OCR Failed: ${errorMsg}`)
     } finally {
       setIsOcrProcessing(false)
       setOcrProgress(0)
