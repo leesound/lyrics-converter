@@ -289,11 +289,16 @@ function App() {
 
       addDebugLog(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
 
-      const { data: { text } } = await Tesseract.recognize(
-        file,
+      // Determine cache key to avoid collision between Standard (jpn) and High Acc (jpn-best)
+      // Standard uses default cache. High Acc uses 'best-data' prefix.
+      const cachePath = ocrHighAccuracy ? 'best-data' : undefined
+
+      const worker = await Tesseract.createWorker(
         lang,
+        1,
         {
           langPath,
+          cachePath,
           logger: m => {
             if (m.status === 'recognizing text') {
               setOcrProgress(Math.round(m.progress * 100))
@@ -304,12 +309,16 @@ function App() {
                 'initializing tesseract': '初始化引擎...',
                 'loading language traineddata': `加载语言包 (${ocrHighAccuracy ? '高精度' : '标准'})...`,
                 'initializing api': '启动接口...',
+                'recognizing text': '识别中...'
               }
               setOcrStatus(statusMap[m.status] || m.status)
             }
           }
         }
       )
+
+      const { data: { text } } = await worker.recognize(file)
+      await worker.terminate()
 
       const cleanText = text.split('\n')
         .map(line => line.trim().replace(/\s+/g, ''))
