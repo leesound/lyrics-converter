@@ -50,7 +50,16 @@ function App() {
     console.log(`[Debug] ${msg}`)
   }
 
+  const isInitialized = useRef(false)
+
   const initKuroshiro = async () => {
+    // Prevent double initialization in Strict Mode
+    if (isInitialized.current) {
+      console.log('Kuroshiro already initializing/initialized, skipping...')
+      return
+    }
+    isInitialized.current = true
+
     setInitError(null)
     setDebugInfo([])
 
@@ -74,9 +83,9 @@ function App() {
     addDebugLog('Starting Kuroshiro init...')
 
     try {
-      // Create a timeout promise (10 seconds)
+      // Create a timeout promise (15 seconds) - increased for slow connections
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('词库加载超时 (10秒)')), 10000)
+        setTimeout(() => reject(new Error('词库加载超时 (15秒)')), 15000)
       })
 
       // Race between initialization and timeout
@@ -89,6 +98,7 @@ function App() {
       setIsReady(true)
       addDebugLog('Kuroshiro init successful!')
     } catch (err) {
+      isInitialized.current = false // Reset init flag on error to allow retry
       const errorMsg = err instanceof Error ? err.message : String(err)
       console.error('Kuroshiro initialization failed:', err)
       setInitError(errorMsg)
@@ -110,7 +120,9 @@ function App() {
   }
 
   useEffect(() => {
-    initKuroshiro()
+    if (!isReady && !kuroshiroRef.current) {
+      initKuroshiro()
+    }
   }, [])
 
   const parseMoras = (hiragana: string): Mora[] => {
