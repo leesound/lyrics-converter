@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw, AlertTriangle } from 'lucide-react'
+import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2 } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
@@ -37,6 +37,10 @@ function App() {
   const [ocrProgress, setOcrProgress] = useState(0)
   const [ocrStatus, setOcrStatus] = useState('')
   const [isDragging, setIsDragging] = useState(false)
+  // New OCR Settings
+  const [ocrHighAccuracy, setOcrHighAccuracy] = useState(false)
+  const [ocrVertical, setOcrVertical] = useState(false)
+  const [showOcrSettings, setShowOcrSettings] = useState(false)
 
   // Debug State
   const [debugInfo, setDebugInfo] = useState<string[]>([])
@@ -278,10 +282,18 @@ function App() {
     setOcrStatus('初始化识别引擎...')
 
     try {
+      const lang = ocrVertical ? 'jpn_vert' : 'jpn'
+      const langPath = ocrHighAccuracy
+        ? 'https://tessdata.projectnaptha.com/4.0.0_best'
+        : 'https://tessdata.projectnaptha.com/4.0.0'
+
+      addDebugLog(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
+
       const { data: { text } } = await Tesseract.recognize(
         file,
-        'jpn',
+        lang,
         {
+          langPath,
           logger: m => {
             if (m.status === 'recognizing text') {
               setOcrProgress(Math.round(m.progress * 100))
@@ -290,7 +302,7 @@ function App() {
               const statusMap: Record<string, string> = {
                 'loading tesseract core': '加载核心组件...',
                 'initializing tesseract': '初始化引擎...',
-                'loading language traineddata': '加载语言包...',
+                'loading language traineddata': `加载语言包 (${ocrHighAccuracy ? '高精度' : '标准'})...`,
                 'initializing api': '启动接口...',
               }
               setOcrStatus(statusMap[m.status] || m.status)
@@ -477,6 +489,45 @@ function App() {
                     disabled={isOcrProcessing}
                   />
                 </div>
+
+                {/* OCR Settings Toggle */}
+                <div className="mt-3">
+                  <button
+                    onClick={() => setShowOcrSettings(!showOcrSettings)}
+                    className="flex items-center gap-1 text-xs text-rose-500 font-medium hover:text-rose-600 transition-colors mx-auto"
+                  >
+                    {showOcrSettings ? '收起设置' : '高级识别设置'}
+                    <Settings2 className="w-3 h-3" />
+                  </button>
+
+                  {showOcrSettings && (
+                    <div className="mt-2 p-3 bg-white/50 border border-rose-100 rounded-lg text-xs text-gray-600 animate-in fade-in slide-in-from-top-1">
+                      <div className="flex flex-col gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
+                          <input
+                            type="checkbox"
+                            checked={ocrHighAccuracy}
+                            onChange={(e) => setOcrHighAccuracy(e.target.checked)}
+                            className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
+                          />
+                          <span>启用高精度模型</span>
+                          <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">更准但更慢</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
+                          <input
+                            type="checkbox"
+                            checked={ocrVertical}
+                            onChange={(e) => setOcrVertical(e.target.checked)}
+                            className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
+                          />
+                          <span>竖排文字模式</span>
+                          <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">针对古文/歌词卡</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <p className="text-xs text-amber-600 mt-3 flex items-center gap-1">
                   <span className="inline-block w-4 h-4 rounded-full bg-amber-100 text-amber-600 text-center leading-4">!</span>
                   OCR 识别可能存在误差，请在转换前核对文字。
