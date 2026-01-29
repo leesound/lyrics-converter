@@ -1,0 +1,12 @@
+{
+    "rewrites": [
+        {
+            "source": "/baidu-api/:path*",
+            "destination": "https://aip.baidubce.com/:path*"
+        },
+        {
+            "source": "/(.*)",
+            "destination": "/index.html"
+        }
+    ]
+}

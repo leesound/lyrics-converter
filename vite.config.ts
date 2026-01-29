@@ -13,4 +13,13 @@ export default defineConfig({
       "path": "path-browserify",
     },
   },
+  server: {
+    proxy: {
+      '/baidu-api': {
+        target: 'https://aip.baidubce.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/baidu-api/, ''),
+      },
+    },
+  },
 });

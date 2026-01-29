@@ -41,20 +41,103 @@ function App() {
   const [ocrHighAccuracy, setOcrHighAccuracy] = useState(false)
   const [ocrVertical, setOcrVertical] = useState(false)
   const [showOcrSettings, setShowOcrSettings] = useState(false)
+  const [ocrProvider, setOcrProvider] = useState<'tesseract' | 'baidu'>('tesseract')
+  const [baiduApiKey, setBaiduApiKey] = useState(() => localStorage.getItem('baidu_api_key') || '')
+  const [baiduSecretKey, setBaiduSecretKey] = useState(() => localStorage.getItem('baidu_secret_key') || '')
 
-  // Debug State
+  useEffect(() => {
+    localStorage.setItem('baidu_api_key', baiduApiKey)
+    localStorage.setItem('baidu_secret_key', baiduSecretKey)
+  }, [baiduApiKey, baiduSecretKey])
+
+  // Helpers & Refs
   const [debugInfo, setDebugInfo] = useState<string[]>([])
   const [showDebug, setShowDebug] = useState(false)
-
   const kuroshiroRef = useRef<Kuroshiro | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const isInitialized = useRef(false)
 
   const addDebugLog = (msg: string) => {
     setDebugInfo(prev => [...prev, `${new Date().toLocaleTimeString()} - ${msg}`])
     console.log(`[Debug] ${msg}`)
   }
 
-  const isInitialized = useRef(false)
+  // ... (existing debug state) ...
+
+  // Baidu OCR Logic
+  const processFileWithBaidu = async (file: File) => {
+    if (!baiduApiKey || !baiduSecretKey) {
+      alert('请先在高级设置中填写百度 API Key 和 Secret Key！')
+      setIsOcrProcessing(false)
+      return
+    }
+
+    setOcrStatus('正在连接百度云...')
+    setOcrProgress(10)
+
+    try {
+      // 1. Get Access Token (via proxy)
+      const tokenUrl = `/baidu-api/oauth/2.0/token?grant_type=client_credentials&client_id=${baiduApiKey}&client_secret=${baiduSecretKey}`
+      const tokenRes = await fetch(tokenUrl, { method: 'POST' })
+      const tokenData = await tokenRes.json()
+
+      if (tokenData.error) {
+        throw new Error(`Token获取失败: ${tokenData.error_description || JSON.stringify(tokenData)}`)
+      }
+
+      const accessToken = tokenData.access_token
+      setOcrProgress(30)
+      setOcrStatus('正在上传图片进行云端识别...')
+
+      // 2. Convert File to Base64 (remove prefix)
+      const toBase64 = (file: File) => new Promise<string>((resolve, reject) => {
+        const reader = new FileReader()
+        reader.readAsDataURL(file)
+        reader.onload = () => resolve(reader.result as string)
+        reader.onerror = error => reject(error)
+      })
+
+      const base64Full = await toBase64(file)
+      const imageBase64 = base64Full.replace(/^data:image\/\w+;base64,/, '')
+
+      // 3. Call OCR API (via proxy)
+      setOcrProgress(60)
+      // Use 'accurate_basic' (High Precision) or 'general_basic' (Standard)
+      const ocrUrl = `/baidu-api/rest/2.0/ocr/v1/accurate_basic`
+      const params = new URLSearchParams()
+      params.append('access_token', accessToken)
+      params.append('image', imageBase64)
+      params.append('language_type', 'JAP') // Japanese
+
+      const ocrRes = await fetch(ocrUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: params
+      })
+
+      const ocrData = await ocrRes.json()
+      setOcrProgress(90)
+
+      if (ocrData.error_code) {
+        throw new Error(`识别失败 [${ocrData.error_code}]: ${ocrData.error_msg}`)
+      }
+
+      const words = ocrData.words_result.map((item: any) => item.words).join('\n')
+      setInputText(words)
+      setOcrProgress(100)
+      alert('百度云识别完成！Accuracy: High')
+
+    } catch (err) {
+      console.error('Baidu OCR Error:', err)
+      const errorMsg = err instanceof Error ? err.message : String(err)
+      alert(`云端识别出错：${errorMsg}`)
+      addDebugLog(`Baidu Failed: ${errorMsg}`)
+    }
+  }
+
+  // ... (existing initKuroshiro, parseMoras, convertText) ...
+
+
 
   const initKuroshiro = async () => {
     // Prevent double initialization in Strict Mode
@@ -280,6 +363,14 @@ function App() {
     setIsOcrProcessing(true)
     setOcrProgress(0)
     setOcrStatus('初始化识别引擎...')
+
+    if (ocrProvider === 'baidu') {
+      await processFileWithBaidu(file)
+      setIsOcrProcessing(false)
+      setOcrStatus('')
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
 
     try {
       const lang = ocrVertical ? 'jpn_vert' : 'jpn'
@@ -518,27 +609,72 @@ function App() {
 
                   {showOcrSettings && (
                     <div className="mt-2 p-3 bg-white/50 border border-rose-100 rounded-lg text-xs text-gray-600 animate-in fade-in slide-in-from-top-1">
-                      <div className="flex flex-col gap-2">
-                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
-                          <input
-                            type="checkbox"
-                            checked={ocrHighAccuracy}
-                            onChange={(e) => setOcrHighAccuracy(e.target.checked)}
-                            className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
-                          />
-                          <span>启用高精度模型</span>
-                          <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">更准但更慢</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
-                          <input
-                            type="checkbox"
-                            checked={ocrVertical}
-                            onChange={(e) => setOcrVertical(e.target.checked)}
-                            className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
-                          />
-                          <span>竖排文字模式</span>
-                          <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">针对古文/歌词卡</span>
-                        </label>
+                      <div className="flex flex-col gap-3">
+                        {/* Provider Selection */}
+                        <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                          <button
+                            onClick={() => setOcrProvider('tesseract')}
+                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${ocrProvider === 'tesseract' ? 'bg-white text-rose-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                          >
+                            本地引擎 (免费)
+                          </button>
+                          <button
+                            onClick={() => setOcrProvider('baidu')}
+                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${ocrProvider === 'baidu' ? 'bg-white text-blue-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                          >
+                            百度云 (高精度)
+                          </button>
+                        </div>
+
+                        {ocrProvider === 'tesseract' ? (
+                          <>
+                            <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
+                              <input
+                                type="checkbox"
+                                checked={ocrHighAccuracy}
+                                onChange={(e) => setOcrHighAccuracy(e.target.checked)}
+                                className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
+                              />
+                              <span>启用高精度模型</span>
+                              <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">更准但更慢</span>
+                            </label>
+                            <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
+                              <input
+                                type="checkbox"
+                                checked={ocrVertical}
+                                onChange={(e) => setOcrVertical(e.target.checked)}
+                                className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
+                              />
+                              <span>竖排文字模式</span>
+                              <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">针对古文/歌词卡</span>
+                            </label>
+                          </>
+                        ) : (
+                          <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-medium text-gray-500">API Key</label>
+                              <input
+                                value={baiduApiKey}
+                                onChange={(e) => setBaiduApiKey(e.target.value)}
+                                placeholder="填写百度云 API Key"
+                                className="w-full text-xs p-1.5 rounded border border-gray-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="text-[10px] font-medium text-gray-500">Secret Key</label>
+                              <input
+                                value={baiduSecretKey}
+                                onChange={(e) => setBaiduSecretKey(e.target.value)}
+                                type="password"
+                                placeholder="填写百度云 Secret Key"
+                                className="w-full text-xs p-1.5 rounded border border-gray-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
+                              />
+                            </div>
+                            <p className="text-[10px] text-blue-400 text-right hover:underline cursor-pointer" onClick={() => window.open('https://console.bce.baidu.com/ai/#/ai/ocr/overview/index', '_blank')}>
+                              去申请免费额度 &gt;
+                            </p>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
