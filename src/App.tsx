@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2 } from 'lucide-react'
+import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2, Terminal } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
@@ -55,8 +55,6 @@ function App() {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const isInitialized = useRef(false)
 
-  // ... (existing debug state) ...
-
   // Baidu OCR Logic
   const processFileWithBaidu = async (file: File) => {
     if (!baiduApiKey || !baiduSecretKey) {
@@ -65,7 +63,7 @@ function App() {
       return
     }
 
-    setOcrStatus('正在连接百度云...')
+    setOcrStatus('connecting to baidu cloud...')
     setOcrProgress(10)
 
     try {
@@ -75,12 +73,12 @@ function App() {
       const tokenData = await tokenRes.json()
 
       if (tokenData.error) {
-        throw new Error(`Token获取失败: ${tokenData.error_description || JSON.stringify(tokenData)}`)
+        throw new Error(`Token Failed: ${tokenData.error_description || JSON.stringify(tokenData)}`)
       }
 
       const accessToken = tokenData.access_token
       setOcrProgress(30)
-      setOcrStatus('正在上传图片进行云端识别...')
+      setOcrStatus('uploading image...')
 
       // 2. Convert File to Base64 (remove prefix)
       const toBase64 = (file: File) => new Promise<string>((resolve, reject) => {
@@ -95,12 +93,11 @@ function App() {
 
       // 3. Call OCR API (via proxy)
       setOcrProgress(60)
-      // Use 'accurate_basic' (High Precision) or 'general_basic' (Standard)
       const ocrUrl = `/baidu-api/rest/2.0/ocr/v1/accurate_basic`
       const params = new URLSearchParams()
       params.append('access_token', accessToken)
       params.append('image', imageBase64)
-      params.append('language_type', 'JAP') // Japanese
+      params.append('language_type', 'JAP')
 
       const ocrRes = await fetch(ocrUrl, {
         method: 'POST',
@@ -112,63 +109,40 @@ function App() {
       setOcrProgress(90)
 
       if (ocrData.error_code) {
-        throw new Error(`识别失败 [${ocrData.error_code}]: ${ocrData.error_msg}`)
+        throw new Error(`OCR Error [${ocrData.error_code}]: ${ocrData.error_msg}`)
       }
 
       const words = ocrData.words_result.map((item: any) => item.words).join('\n')
       setInputText(words)
       setOcrProgress(100)
-      alert('百度云识别完成！Accuracy: High')
+      // Remove alert for smoother experience
+      // alert('Baidu OCR Complete')
 
     } catch (err) {
       console.error('Baidu OCR Error:', err)
       const errorMsg = err instanceof Error ? err.message : String(err)
-      alert(`云端识别出错：${errorMsg}`)
-      console.log(`Baidu Failed: ${errorMsg}`)
+      alert(`Cloud OCR Error: ${errorMsg}`)
     }
   }
 
-  // ... (existing initKuroshiro, parseMoras, convertText) ...
-
-
-
   const initKuroshiro = async () => {
-    // Prevent double initialization in Strict Mode
-    if (isInitialized.current) {
-      console.log('Kuroshiro already initializing/initialized, skipping...')
-      return
-    }
+    if (isInitialized.current) return
     isInitialized.current = true
-
     setInitError(null)
 
-
-    // Check for file protocol
     if (window.location.protocol === 'file:') {
-      const errorMsg = '错误：检测到 file:// 协议。本应用必须在服务器环境下运行（如 VS Code Live Server, Vite dev, 或部署到 Web）才能加载词库文件。'
-      setInitError(errorMsg)
-      console.log(errorMsg)
+      setInitError('Error: file:// protocol detected. Please run on a local server.')
       return
     }
 
     const kuroshiro = new Kuroshiro()
-
-    // Construct the dictionary path
-    const dictPath = import.meta.env.BASE_URL === '/'
-      ? '/dict'
-      : `${import.meta.env.BASE_URL}dict`
-
-    console.log(`Base URL: ${import.meta.env.BASE_URL}`)
-    console.log(`Resolved Dict Path: ${dictPath}`)
-    console.log('Starting Kuroshiro init...')
+    const dictPath = import.meta.env.BASE_URL === '/' ? '/dict' : `${import.meta.env.BASE_URL}dict`
 
     try {
-      // Create a timeout promise (15 seconds) - increased for slow connections
       const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error('词库加载超时 (15秒)')), 15000)
+        setTimeout(() => reject(new Error('Dictionary load timeout (15s)')), 15000)
       })
 
-      // Race between initialization and timeout
       await Promise.race([
         kuroshiro.init(new KuromojiAnalyzer({ dictPath })),
         timeoutPromise
@@ -178,31 +152,20 @@ function App() {
       setIsReady(true)
       console.log('Kuroshiro init successful!')
     } catch (err) {
-      isInitialized.current = false // Reset init flag on error to allow retry
+      isInitialized.current = false
       const errorMsg = err instanceof Error ? err.message : String(err)
-      console.error('Kuroshiro initialization failed:', err)
+      console.error('Kuroshiro init failed:', err)
       setInitError(errorMsg)
-      console.log(`Init Failed: ${errorMsg}`)
 
-      // Try to probe the dictionary availability
-      console.log('Probing dictionary file...')
       try {
-        const testUrl = `${dictPath}/base.dat.gz`
-        const response = await fetch(testUrl)
-        console.log(`Probe ${testUrl}: Status ${response.status}`)
-        if (!response.ok) {
-          setInitError(`无法访问词库文件 (${response.status})。请检查部署配置。`)
-        }
-      } catch (probeErr) {
-        console.log(`Probe error: ${String(probeErr)}`)
-      }
+        const response = await fetch(`${dictPath}/base.dat.gz`)
+        if (!response.ok) setInitError(`Dict file inaccessible (${response.status})`)
+      } catch (e) { /* ignore */ }
     }
   }
 
   useEffect(() => {
-    if (!isReady && !kuroshiroRef.current) {
-      initKuroshiro()
-    }
+    if (!isReady && !kuroshiroRef.current) initKuroshiro()
   }, [])
 
   const parseMoras = (hiragana: string): Mora[] => {
@@ -212,16 +175,11 @@ function App() {
     for (let i = 0; i < chars.length; i++) {
       const char = chars[i]
       const nextChar = chars[i + 1]
-
       const isSmallKana = (c: string) => /[ぁぃぅぇぉゃゅょ]/.test(c)
 
       if (nextChar && isSmallKana(nextChar)) {
         const combined = char + nextChar
-        moras.push({
-          kana: combined,
-          romaji: wanakana.toRomaji(combined),
-          type: 'yoon'
-        })
+        moras.push({ kana: combined, romaji: wanakana.toRomaji(combined), type: 'yoon' })
         i++
         continue
       }
@@ -230,78 +188,45 @@ function App() {
         let nextConsonant = ''
         if (nextChar) {
           if (chars[i + 2] && isSmallKana(chars[i + 2])) {
-            const nextMoraRomaji = wanakana.toRomaji(nextChar + chars[i + 2])
-            nextConsonant = nextMoraRomaji.charAt(0)
+            nextConsonant = wanakana.toRomaji(nextChar + chars[i + 2]).charAt(0)
           } else {
-            const nextMoraRomaji = wanakana.toRomaji(nextChar)
-            nextConsonant = nextMoraRomaji.charAt(0)
+            nextConsonant = wanakana.toRomaji(nextChar).charAt(0)
           }
         } else {
           nextConsonant = "'"
         }
-
-        moras.push({
-          kana: char,
-          romaji: nextConsonant,
-          type: 'sokuon'
-        })
+        moras.push({ kana: char, romaji: nextConsonant, type: 'sokuon' })
         continue
       }
 
       if (char === 'ー') {
-        moras.push({
-          kana: char,
-          romaji: '-',
-          type: 'long'
-        })
+        moras.push({ kana: char, romaji: '-', type: 'long' })
         continue
       }
 
-      moras.push({
-        kana: char,
-        romaji: wanakana.toRomaji(char),
-        type: 'normal'
-      })
+      moras.push({ kana: char, romaji: wanakana.toRomaji(char), type: 'normal' })
     }
     return moras
   }
 
   const convertText = async () => {
     if (!inputText.trim() || !kuroshiroRef.current || !isReady) return
-
     setIsConverting(true)
 
     try {
       const customReplacements: Record<string, string> = {
-        '一発': 'いっぱつ',
-        '鐘々': 'かねがね',
-        'ランデヴー': 'らんでぶー',
-        'ヴィ': 'び',
-        'ヴェ': 'べ',
-        'ヴォ': 'ぼ',
-        'ヴァ': 'ば',
-        'ゔ': 'ぶ',
-        '酩酊': 'めいてい',
+        '一発': 'いっぱつ', '鐘々': 'かねがね', 'ランデヴー': 'らんでぶー',
+        'ヴィ': 'び', 'ヴェ': 'べ', 'ヴォ': 'ぼ', 'ヴァ': 'ば', 'ゔ': 'ぶ', '酩酊': 'めいてい',
       }
-
-      const applyCustomReplacements = (text: string): string => {
+      const applyCustomReplacements = (text: string) => {
         let res = text
-        Object.entries(customReplacements).forEach(([key, val]) => {
-          res = res.replaceAll(key, val)
-        })
+        Object.entries(customReplacements).forEach(([key, val]) => { res = res.replaceAll(key, val) })
         return res
       }
 
       const lines = inputText.split('\n').filter(line => line.trim())
-
-      const convertedResult: ConvertedLine[] = await Promise.all(lines.map(async (line) => {
-        const trimmedLine = line.trim()
-
-        const rubyHtml = await kuroshiroRef.current!.convert(applyCustomReplacements(trimmedLine), {
-          to: 'hiragana',
-          mode: 'furigana'
-        })
-
+      const convertedResult = await Promise.all(lines.map(async (line) => {
+        const rubyHtml = await kuroshiroRef.current!.convert(applyCustomReplacements(line.trim()), { to: 'hiragana', mode: 'furigana' })
         const wordList: Word[] = []
         const tempDiv = document.createElement('div')
         tempDiv.innerHTML = rubyHtml
@@ -310,41 +235,20 @@ function App() {
           if (node.nodeType === Node.TEXT_NODE) {
             const text = node.textContent?.trim() || ''
             if (!text) return
-
-            const hiraganaText = wanakana.toHiragana(text, { passRomaji: true })
-
-            wordList.push({
-              original: '',
-              moras: parseMoras(hiraganaText)
-            })
+            wordList.push({ original: '', moras: parseMoras(wanakana.toHiragana(text, { passRomaji: true })) })
           } else if (node.nodeName === 'RUBY') {
-            let kanji = ''
-            let reading = ''
-
+            let kanji = '', reading = ''
             node.childNodes.forEach(child => {
-              if (child.nodeType === Node.TEXT_NODE) {
-                kanji += child.textContent
-              } else if (child.nodeName === 'RT') {
-                reading += child.textContent
-              }
+              if (child.nodeType === Node.TEXT_NODE) kanji += child.textContent
+              else if (child.nodeName === 'RT') reading += child.textContent
             })
-
             reading = reading.trim().replace(/ゔ/g, 'ぶ')
-
-            wordList.push({
-              original: kanji,
-              moras: parseMoras(reading)
-            })
+            wordList.push({ original: kanji, moras: parseMoras(reading) })
           }
         })
-
         return { words: wordList }
       }))
-
       setConvertedLines(convertedResult)
-    } catch (error) {
-      console.error('Conversion error:', error)
-      alert('转换过程中出错，请重试')
     } finally {
       setIsConverting(false)
     }
@@ -352,479 +256,255 @@ function App() {
 
   const processFile = async (file: File) => {
     if (!file) return
-
     setIsOcrProcessing(true)
-    setOcrProgress(0)
-    setOcrStatus('初始化识别引擎...')
-
+    setOcrStatus('initializing engine...')
     if (ocrProvider === 'baidu') {
       await processFileWithBaidu(file)
       setIsOcrProcessing(false)
-      setOcrStatus('')
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
-
     try {
       const lang = ocrVertical ? 'jpn_vert' : 'jpn'
       const langPath = ocrHighAccuracy
-        ? 'https://tessdata.projectnaptha.com/4.0.0_best' // Revert to float model (Best) now that we force non-SIMD core
+        ? 'https://tessdata.projectnaptha.com/4.0.0_best'
         : 'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_fast'
-
-      console.log(`OCR Start: Lang=${lang}, HighAcc=${ocrHighAccuracy}, Vertical=${ocrVertical}`)
-
-      // Determine cache key to avoid collision between Standard (jpn) and High Acc (jpn-best)
-      // Standard uses default cache. High Acc uses 'best-data' prefix.
       const cachePath = ocrHighAccuracy ? 'best-data' : undefined
-
-      // Force non-SIMD core for High Accuracy to prevent DotProductSSE crash
-      // Pointing directly to the .js file bypasses SIMD detection
       const corePath = ocrHighAccuracy
         ? 'https://cdn.jsdelivr.net/npm/tesseract.js-core@v5.0.0/tesseract-core.wasm.js'
         : undefined
 
-      const worker = await Tesseract.createWorker(
-        lang,
-        1,
-        {
-          corePath,
-          langPath,
-          cachePath,
-          logger: m => {
-            if (m.status === 'recognizing text') {
-              setOcrProgress(Math.round(m.progress * 100))
-              setOcrStatus(`正在识别文字... ${Math.round(m.progress * 100)}%`)
-            } else {
-              const statusMap: Record<string, string> = {
-                'loading tesseract core': '加载核心组件...',
-                'initializing tesseract': '初始化引擎...',
-                'loading language traineddata': `加载语言包 (${ocrHighAccuracy ? '高精度' : '标准'})...`,
-                'initializing api': '启动接口...',
-                'recognizing text': '识别中...'
-              }
-              setOcrStatus(statusMap[m.status] || m.status)
-            }
+      const worker = await Tesseract.createWorker(lang, 1, {
+        corePath, langPath, cachePath,
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            setOcrProgress(Math.round(m.progress * 100))
+            setOcrStatus(`recognizing... ${Math.round(m.progress * 100)}%`)
+          } else {
+            setOcrStatus(m.status)
           }
         }
-      )
-
+      })
       const { data: { text } } = await worker.recognize(file)
       await worker.terminate()
-
-      const cleanText = text.split('\n')
-        .map(line => line.trim().replace(/\s+/g, ''))
-        .filter(line => line.length > 0)
-        .join('\n')
-
+      const cleanText = text.split('\n').map(l => l.trim().replace(/\s+/g, '')).filter(l => l.length > 0).join('\n')
       setInputText(cleanText)
-      alert('识别完成！已自动填入文本框。')
-
     } catch (err) {
-      console.error('OCR Error:', err)
-      const errorMsg = err instanceof Error ? err.message : String(err)
-      alert('图片识别失败，已记录错误日志。')
-      console.log(`OCR Failed: ${errorMsg}`)
+      console.error(err)
+      alert('OCR Failed')
     } finally {
       setIsOcrProcessing(false)
-      setOcrProgress(0)
       setOcrStatus('')
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
+      if (fileInputRef.current) fileInputRef.current.value = ''
     }
-  }
-
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      processFile(file)
-    }
-  }
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    if (!isOcrProcessing) {
-      setIsDragging(true)
-    }
-  }
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-  }
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
-    setIsDragging(false)
-
-    if (isOcrProcessing) return
-
-    const file = e.dataTransfer.files?.[0]
-    if (file && file.type.startsWith('image/')) {
-      processFile(file)
-    } else if (file) {
-      alert('请上传图片文件 (JPG/PNG)')
-    }
-  }
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
-    alert('已复制到剪贴板！')
-  }
-
-  const clearAll = () => {
-    setInputText('')
-    setConvertedLines([])
   }
 
   const exportResult = () => {
     if (convertedLines.length === 0) return
-
     let result = ''
     convertedLines.forEach(line => {
       const sentence = line.words.map(w => w.original || w.moras.map(m => m.kana).join('')).join('')
       const reading = line.words.map(w => w.moras.map(m => m.kana).join('')).join(' ')
       result += `${sentence}\n${reading}\n\n`
     })
-
-    copyToClipboard(result.trim())
-    alert('已复制到剪贴板！')
+    navigator.clipboard.writeText(result.trim())
+    alert('Copied to clipboard!')
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-rose-50 via-white to-pink-50">
-      <header className="bg-white/80 backdrop-blur-md border-b border-rose-100 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-rose-400 to-pink-500 rounded-xl flex items-center justify-center shadow-lg shadow-rose-200">
-              <Music className="w-5 h-5 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold bg-gradient-to-r from-rose-500 to-pink-500 bg-clip-text text-transparent">
-                日文歌词转换器
-              </h1>
-            </div>
+    <div className="min-h-screen bg-background font-sans text-foreground selection:bg-primary selection:text-black">
+      {/* Header */}
+      <header className="border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-10">
+        <div className="max-w-4xl mx-auto px-4 py-4 flex items-center gap-3">
+          <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center shadow-glow">
+            <Terminal className="w-5 h-5 text-black" />
           </div>
+          <h1 className="text-lg font-bold tracking-tight text-foreground">
+            LYRICS<span className="text-primary">.CONVERTER</span>
+            <span className="ml-2 text-xs font-mono text-muted-foreground px-1.5 py-0.5 border border-border rounded bg-secondary/50">v2.0</span>
+          </h1>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
-        <Card className="mb-6 border-rose-100 shadow-lg shadow-rose-100/50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <Type className="w-4 h-4 text-rose-500" />
-              输入日文歌词
+        <Card className="mb-6 border-border bg-card shadow-sm">
+          <CardHeader className="pb-3 border-b border-border/50">
+            <CardTitle className="text-sm font-mono flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+              <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
+              Input Source
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-6">
             <Tabs defaultValue="text" className="w-full">
-              <TabsList className="mb-4 bg-rose-50">
-                <TabsTrigger value="text" className="data-[state=active]:bg-white">
-                  <Type className="w-4 h-4 mr-1" />
-                  文本输入
+              <TabsList className="mb-4 bg-secondary border border-border w-full justify-start p-1 h-auto">
+                <TabsTrigger value="text" className="data-[state=active]:bg-primary data-[state=active]:text-black text-sm flex-1 font-medium font-mono">
+                  <Type className="w-4 h-4 mr-2" />
+                  TEXT_INPUT
                 </TabsTrigger>
-                <TabsTrigger value="image" className="data-[state=active]:bg-white">
-                  <Upload className="w-4 h-4 mr-1" />
-                  图片上传
+                <TabsTrigger value="image" className="data-[state=active]:bg-primary data-[state=active]:text-black text-sm flex-1 font-medium font-mono">
+                  <Upload className="w-4 h-4 mr-2" />
+                  IMAGE_OCR
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="text">
                 <Textarea
-                  placeholder="请粘贴日文歌词，每行一句...
-
-例如：
-君の名は
-夢を見ている"
+                  placeholder="Paste Japanese lyrics here..."
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  className="min-h-[160px] resize-none border-rose-200 focus:border-rose-400 focus:ring-rose-200"
+                  className="min-h-[160px] resize-none bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary font-mono text-sm leading-relaxed"
                 />
               </TabsContent>
 
               <TabsContent value="image">
                 <div
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all relative overflow-hidden
-                    ${isOcrProcessing ? 'bg-rose-50 border-rose-200 cursor-wait' :
-                      isDragging
-                        ? 'border-rose-500 bg-rose-50 scale-[0.99] shadow-inner'
-                        : 'border-rose-200 hover:border-rose-400 hover:bg-rose-50/50'
+                  className={`border border-dashed rounded-lg p-10 text-center cursor-pointer transition-all relative overflow-hidden group
+                    ${isOcrProcessing ? 'bg-secondary/20 border-border cursor-wait' :
+                      isDragging ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50 hover:bg-secondary/30'
                     }
                   `}
                   onClick={() => !isOcrProcessing && fileInputRef.current?.click()}
-                  onDragOver={handleDragOver}
-                  onDragLeave={handleDragLeave}
-                  onDrop={handleDrop}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true) }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault(); setIsDragging(false);
+                    if (!isOcrProcessing && e.dataTransfer.files?.[0]) processFile(e.dataTransfer.files[0])
+                  }}
                 >
                   {isOcrProcessing ? (
-                    <div className="flex flex-col items-center justify-center py-4">
-                      <ScanEye className="w-12 h-12 text-rose-500 animate-pulse mb-3" />
-                      <p className="text-rose-600 font-medium mb-2">{ocrStatus}</p>
-                      <div className="w-48 h-2 bg-rose-100 rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-rose-500 transition-all duration-300"
-                          style={{ width: `${ocrProgress}%` }}
-                        />
+                    <div className="flex flex-col items-center justify-center">
+                      <ScanEye className="w-10 h-10 text-primary animate-pulse mb-4" />
+                      <p className="text-primary font-mono text-sm mb-3">{ocrStatus}</p>
+                      <div className="w-48 h-1 bg-secondary rounded-full overflow-hidden">
+                        <div className="h-full bg-primary transition-all duration-300 shadow-glow" style={{ width: `${ocrProgress}%` }} />
                       </div>
                     </div>
                   ) : (
                     <>
-                      <Upload className={`w-10 h-10 mx-auto mb-3 transition-colors ${isDragging ? 'text-rose-500' : 'text-rose-300'}`} />
-                      <p className={`text-sm mb-1 font-medium ${isDragging ? 'text-rose-600' : 'text-gray-600'}`}>
-                        {isDragging ? '松开即刻识别' : '拖入图片 或 点击上传 (OCR)'}
+                      <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                      <p className="text-sm font-mono text-muted-foreground group-hover:text-foreground transition-colors">
+                        DRAG_IMAGE_HERE <span className="text-xs opacity-50 mx-2">OR</span> CLICK_TO_UPLOAD
                       </p>
-                      <p className="text-xs text-gray-400">支持 JPG, PNG · 自动识别日文</p>
                     </>
                   )}
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileUpload}
-                    className="hidden"
-                    disabled={isOcrProcessing}
-                  />
+                  <input ref={fileInputRef} type="file" accept="image/*" onChange={(e) => processFile(e.target.files?.[0]!)} className="hidden" disabled={isOcrProcessing} />
                 </div>
 
-                {/* OCR Settings Toggle */}
-                <div className="mt-3">
-                  <button
-                    onClick={() => setShowOcrSettings(!showOcrSettings)}
-                    className="flex items-center gap-1 text-xs text-rose-500 font-medium hover:text-rose-600 transition-colors mx-auto"
-                  >
-                    {showOcrSettings ? '收起设置' : '高级识别设置'}
+                {/* Settings Toggle */}
+                <div className="mt-4 flex justify-end">
+                  <button onClick={() => setShowOcrSettings(!showOcrSettings)} className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-primary transition-colors">
                     <Settings2 className="w-3 h-3" />
+                    CONFIGURE_OCR
                   </button>
-
-                  {showOcrSettings && (
-                    <div className="mt-2 p-3 bg-white/50 border border-rose-100 rounded-lg text-xs text-gray-600 animate-in fade-in slide-in-from-top-1">
-                      <div className="flex flex-col gap-3">
-                        {/* Provider Selection */}
-                        <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
-                          <button
-                            onClick={() => setOcrProvider('tesseract')}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${ocrProvider === 'tesseract' ? 'bg-white text-rose-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                          >
-                            本地引擎 (免费)
-                          </button>
-                          <button
-                            onClick={() => setOcrProvider('baidu')}
-                            className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${ocrProvider === 'baidu' ? 'bg-white text-blue-500 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-                          >
-                            百度云 (高精度)
-                          </button>
-                        </div>
-
-                        {ocrProvider === 'tesseract' ? (
-                          <>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
-                              <input
-                                type="checkbox"
-                                checked={ocrHighAccuracy}
-                                onChange={(e) => setOcrHighAccuracy(e.target.checked)}
-                                className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
-                              />
-                              <span>启用高精度模型</span>
-                              <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">更准但更慢</span>
-                            </label>
-                            <label className="flex items-center gap-2 cursor-pointer hover:text-gray-900">
-                              <input
-                                type="checkbox"
-                                checked={ocrVertical}
-                                onChange={(e) => setOcrVertical(e.target.checked)}
-                                className="rounded border-gray-300 text-rose-500 focus:ring-rose-200"
-                              />
-                              <span>竖排文字模式</span>
-                              <span className="text-[10px] text-gray-400 ml-auto bg-gray-100 px-1 rounded">针对古文/歌词卡</span>
-                            </label>
-                          </>
-                        ) : (
-                          <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-medium text-gray-500">API Key</label>
-                              <input
-                                value={baiduApiKey}
-                                onChange={(e) => setBaiduApiKey(e.target.value)}
-                                placeholder="填写百度云 API Key"
-                                className="w-full text-xs p-1.5 rounded border border-gray-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="text-[10px] font-medium text-gray-500">Secret Key</label>
-                              <input
-                                value={baiduSecretKey}
-                                onChange={(e) => setBaiduSecretKey(e.target.value)}
-                                type="password"
-                                placeholder="填写百度云 Secret Key"
-                                className="w-full text-xs p-1.5 rounded border border-gray-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-100 outline-none transition-all"
-                              />
-                            </div>
-                            <p className="text-[10px] text-blue-400 text-right hover:underline cursor-pointer" onClick={() => window.open('https://console.bce.baidu.com/ai/#/ai/ocr/overview/index', '_blank')}>
-                              去申请免费额度 &gt;
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
-                <p className="text-xs text-amber-600 mt-3 flex items-center gap-1">
-                  <span className="inline-block w-4 h-4 rounded-full bg-amber-100 text-amber-600 text-center leading-4">!</span>
-                  OCR 识别可能存在误差，请在转换前核对文字。
-                </p>
+                {showOcrSettings && (
+                  <div className="mt-2 p-4 bg-secondary/50 border border-border rounded-lg text-xs animate-in fade-in slide-in-from-top-1">
+                    <div className="flex gap-2 p-1 bg-background rounded border border-border mb-3">
+                      {['tesseract', 'baidu'].map(p => (
+                        <button key={p} onClick={() => setOcrProvider(p as any)}
+                          className={`flex-1 py-1.5 font-mono text-xs rounded transition-all ${ocrProvider === p ? 'bg-primary text-black font-bold' : 'text-muted-foreground hover:text-foreground'}`}>
+                          {p.toUpperCase()}
+                        </button>
+                      ))}
+                    </div>
+                    {ocrProvider === 'tesseract' ? (
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
+                          <input type="checkbox" checked={ocrHighAccuracy} onChange={e => setOcrHighAccuracy(e.target.checked)} className="rounded border-border bg-background text-primary focus:ring-primary" />
+                          HIGH_ACCURACY
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
+                          <input type="checkbox" checked={ocrVertical} onChange={e => setOcrVertical(e.target.checked)} className="rounded border-border bg-background text-primary focus:ring-primary" />
+                          VERTICAL_MODE
+                        </label>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <input value={baiduApiKey} onChange={e => setBaiduApiKey(e.target.value)} placeholder="BAIDU_API_KEY" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
+                        <input value={baiduSecretKey} onChange={e => setBaiduSecretKey(e.target.value)} type="password" placeholder="BAIDU_SECRET_KEY" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
+                        <a href="https://console.bce.baidu.com/ai/#/ai/ocr/overview/index" target="_blank" className="block text-right text-primary hover:underline">Apply for Free API ></a>
+                      </div>
+                    )}
+                  </div>
+                )}
               </TabsContent>
             </Tabs>
 
-            <div className="flex gap-2 mt-4">
+            <div className="flex gap-3 mt-6">
               <Button
                 onClick={convertText}
                 disabled={!inputText.trim() || isConverting || !isReady}
-                className="flex-1 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white disabled:opacity-70"
+                className="flex-1 bg-primary text-black hover:bg-primary/90 font-bold tracking-wide shadow-glow disabled:opacity-50 disabled:shadow-none transition-all h-10"
               >
                 {!isReady ? (
-                  initError ? (
-                    <>初始化失败 (点击右侧重试)</>
-                  ) : (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      初始化词库中...
-                    </>
-                  )
+                  initError ? "INIT_FAILED" : <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> LOADING_DICT...</>
                 ) : isConverting ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    转换中...
-                  </>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> PROCESSING...</>
                 ) : (
-                  <>
-                    <Languages className="w-4 h-4 mr-2" />
-                    开始转换
-                  </>
+                  <><Terminal className="w-4 h-4 mr-2" /> EXECUTE_CONVERSION</>
                 )}
               </Button>
 
               {(!isReady || initError) && (
-                <Button variant="outline" onClick={initKuroshiro} className="border-rose-200 text-rose-500 hover:bg-rose-50">
+                <Button variant="outline" onClick={initKuroshiro} className="border-border text-muted-foreground hover:text-foreground hover:border-primary hover:bg-transparent">
                   <RefreshCw className={`w-4 h-4 ${!initError && !isReady ? 'animate-spin' : ''}`} />
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                onClick={clearAll}
-                disabled={(!inputText && convertedLines.length === 0) || !isReady}
-                className="border-rose-200 hover:bg-rose-50"
-              >
+              <Button variant="outline" onClick={() => { setInputText(''); setConvertedLines([]) }} disabled={!inputText && !convertedLines.length} className="border-border text-muted-foreground hover:text-red-500 hover:border-red-500 hover:bg-transparent">
                 <Trash2 className="w-4 h-4" />
               </Button>
             </div>
 
-            {/* Error & Debug Display */}
-            {/* Error & Debug Display - Wrapped in stable containers to prevent layout shift crashes */}
-            <div className="min-h-[20px] transition-all duration-300 ease-in-out">
-              {initError && (
-                <div className="mt-4 p-3 bg-red-50 border border-red-100 rounded-lg text-xs text-red-600 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex items-center gap-2 font-bold mb-1">
-                    <AlertTriangle className="w-4 h-4" />
-                    初始化失败
-                  </div>
-                  <p className="mb-2">{initError}</p>
-                  <p className="mt-2 opacity-75">提示：请尝试刷新页面，或检查网络是否能访问 /dict 目录下的文件。</p>
-                </div>
-              )}
-
-
-            </div>
-
-
-
+            {initError && (
+              <div className="mt-4 p-3 border border-red-900/50 bg-red-900/10 rounded text-xs text-red-500 font-mono flex gap-2 items-center">
+                <AlertTriangle className="w-4 h-4" /> {initError}
+              </div>
+            )}
           </CardContent>
         </Card>
 
         {convertedLines.length > 0 && (
-          <Card className="border-rose-100 shadow-lg shadow-rose-100/50">
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Languages className="w-4 h-4 text-rose-500" />
-                  转换结果
-                </CardTitle>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={exportResult}
-                  className="text-rose-500 hover:text-rose-600 hover:bg-rose-50"
-                >
-                  <Copy className="w-4 h-4 mr-1" />
-                  复制文本
-                </Button>
-              </div>
+          <Card className="border-border bg-card shadow-sm animate-in fade-in slide-in-from-bottom-2">
+            <CardHeader className="pb-3 border-b border-border/50 flex flex-row items-center justify-between">
+              <CardTitle className="text-sm font-mono flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
+                <div className="w-2 h-2 rounded-full bg-primary" />
+                Output Result
+              </CardTitle>
+              <Button variant="ghost" size="sm" onClick={exportResult} className="text-primary hover:bg-primary/10 hover:text-primary font-mono text-xs h-7">
+                <Copy className="w-3 h-3 mr-1.5" /> COPY_ALL
+              </Button>
             </CardHeader>
-            <CardContent>
-              <div className="space-y-8">
-                {convertedLines.map((line, lineIdx) => (
-                  <div key={lineIdx} className="bg-white/50 rounded-xl p-4 border border-rose-100 shadow-sm">
-                    <div className="flex flex-wrap items-end gap-x-3 gap-y-6">
-                      {/* Render each word */}
-                      {line.words.map((word, wordIdx) => (
-                        <div key={wordIdx} className="flex flex-col items-center">
-                          {/* Top: Original Kanji/Text */}
-                          {word.original && (
-                            <span className="text-lg font-bold text-gray-800 mb-1 leading-none">
-                              {word.original}
-                            </span>
-                          )}
-
-                          {/* Bottom: Moras (Kana + Romaji) */}
-                          <div className="flex items-end gap-[1px]">
-                            {word.moras.map((mora, moraIdx) => (
-                              <div key={moraIdx} className="flex flex-col items-center group">
-                                {/* Kana */}
-                                <span
-                                  className={`text-sm font-japanese leading-none mb-1 transition-colors
-                                                ${mora.type === 'sokuon' ? 'text-rose-600 font-bold' : ''}
-                                                ${mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-500' : 'text-gray-600'}
-                                              `}
-                                >
-                                  {mora.kana}
-                                </span>
-
-                                {/* Romaji */}
-                                <span
-                                  className={`text-xs font-mono leading-none tracking-tighter uppercase font-medium
-                                    ${mora.type === 'sokuon' ? 'text-rose-600 font-bold' : ''}
-                                    ${mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-600' : 'text-gray-600'}
-                                  `}
-                                >
-                                  {mora.romaji}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
+            <CardContent className="pt-6 space-y-6">
+              {convertedLines.map((line, i) => (
+                <div key={i} className="bg-secondary/30 rounded border border-border/50 p-4 hover:border-primary/30 transition-colors">
+                  <div className="flex flex-wrap items-end gap-x-3 gap-y-5">
+                    {line.words.map((word, j) => (
+                      <div key={j} className="flex flex-col items-center group">
+                        {word.original && (
+                          <span className="text-lg font-bold text-foreground mb-1.5 tracking-wide leading-none">{word.original}</span>
+                        )}
+                        <div className="flex items-end gap-[1px]">
+                          {word.moras.map((mora, k) => (
+                            <div key={k} className="flex flex-col items-center">
+                              <span className={`text-sm leading-none mb-1 font-japanese ${mora.type === 'sokuon' ? 'text-primary font-bold' :
+                                  mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-400' : 'text-muted-foreground'
+                                }`}>{mora.kana}</span>
+                              <span className={`text-[10px] font-mono uppercase tracking-tighter ${mora.type === 'sokuon' ? 'text-primary font-bold' : 'text-muted-foreground/60'
+                                }`}>{mora.romaji}</span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
-
-        {convertedLines.length === 0 && inputText && (
-          <div className="text-center py-12 text-gray-400">
-            <Music className="w-12 h-12 mx-auto mb-3 opacity-30" />
-            <p>点击"开始转换"查看结果</p>
-          </div>
-        )}
       </main>
-
-
     </div>
   )
 }
