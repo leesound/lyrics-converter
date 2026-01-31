@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Music, Languages, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2, Terminal } from 'lucide-react'
+import { Copy, Trash2, Upload, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2, Terminal } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
@@ -423,7 +423,7 @@ function App() {
                       <div className="space-y-2">
                         <input value={baiduApiKey} onChange={e => setBaiduApiKey(e.target.value)} placeholder="BAIDU_API_KEY" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
                         <input value={baiduSecretKey} onChange={e => setBaiduSecretKey(e.target.value)} type="password" placeholder="BAIDU_SECRET_KEY" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
-                        <a href="https://console.bce.baidu.com/ai/#/ai/ocr/overview/index" target="_blank" className="block text-right text-primary hover:underline">Apply for Free API ></a>
+                        <a href="https://console.bce.baidu.com/ai/#/ai/ocr/overview/index" target="_blank" className="block text-right text-primary hover:underline">Apply for Free API &gt;</a>
                       </div>
                     )}
                   </div>
@@ -489,7 +489,7 @@ function App() {
                           {word.moras.map((mora, k) => (
                             <div key={k} className="flex flex-col items-center">
                               <span className={`text-sm leading-none mb-1 font-japanese ${mora.type === 'sokuon' ? 'text-primary font-bold' :
-                                  mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-400' : 'text-muted-foreground'
+                                mora.type === 'yoon' || mora.type === 'long' ? 'text-blue-400' : 'text-muted-foreground'
                                 }`}>{mora.kana}</span>
                               <span className={`text-[10px] font-mono uppercase tracking-tighter ${mora.type === 'sokuon' ? 'text-primary font-bold' : 'text-muted-foreground/60'
                                 }`}>{mora.romaji}</span>
