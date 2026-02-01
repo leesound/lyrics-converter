@@ -1,69 +1,66 @@
 import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Volume2, Mic, Settings2 } from 'lucide-react'
+import { Volume2, Mic, Settings2, Sparkles, Wifi } from 'lucide-react'
 import { gojuonRows } from '../data/gojuon'
 import type { Kana } from '../data/gojuon'
 
 export function GojuonChart() {
     const [displayMode, setDisplayMode] = useState<'hira' | 'kata'>('hira')
     const [activeRef, setActiveRef] = useState<string | null>(null)
+    const [useOnlineVoice, setUseOnlineVoice] = useState(true)
     const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
     const [selectedVoiceURI, setSelectedVoiceURI] = useState<string>('')
 
     useEffect(() => {
         const loadVoices = () => {
             const allVoices = window.speechSynthesis.getVoices()
-            // Filter for Japanese voices
             const jpVoices = allVoices.filter(v => v.lang === 'ja-JP' || v.lang === 'ja_JP')
-
             setVoices(jpVoices)
 
-            // Intelligent prioritization
-            if (jpVoices.length > 0) {
-                // 1. Try Google 日本語 (Chrome natural)
-                const googleVoice = jpVoices.find(v => v.name.includes('Google') || v.name.includes('日本語'))
-                // 2. Try Microsoft Online (Edge natural)
-                const msVoice = jpVoices.find(v => v.name.includes('Microsoft') && v.name.includes('Online'))
-                // 3. Fallback
-                const bestVoice = googleVoice || msVoice || jpVoices[0]
-
-                // Only set default if user hasn't selected one yet
-                if (!selectedVoiceURI) {
-                    setSelectedVoiceURI(bestVoice.voiceURI)
-                }
+            if (jpVoices.length > 0 && !selectedVoiceURI) {
+                const bestVoice = jpVoices.find(v => v.name.includes('Google') || v.name.includes('Microsoft')) || jpVoices[0]
+                setSelectedVoiceURI(bestVoice.voiceURI)
             }
         }
-
         loadVoices()
-
-        // Chrome loads voices asynchronously
         if (window.speechSynthesis.onvoiceschanged !== undefined) {
             window.speechSynthesis.onvoiceschanged = loadVoices
         }
     }, [])
 
     const playSound = (kana: Kana) => {
+        // Visual feedback immediately
+        setActiveRef(kana.romaji)
+        setTimeout(() => setActiveRef(null), 500)
+
+        // 1. Try Online Neural Voice (Google TTS)
+        if (useOnlineVoice) {
+            const audio = new Audio(`https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&tl=ja&q=${encodeURIComponent(kana.hira)}`)
+            audio.volume = 1.0
+            audio.play().catch(err => {
+                console.error("Online audio failed, falling back to local:", err)
+                playLocalSound(kana) // Fallback if offline or blocked
+            })
+            return
+        }
+
+        // 2. Local Fallback
+        playLocalSound(kana)
+    }
+
+    const playLocalSound = (kana: Kana) => {
         if (!('speechSynthesis' in window)) return
-
-        // Stop previous utterance
         window.speechSynthesis.cancel()
-
         const utterance = new SpeechSynthesisUtterance(kana.hira)
         utterance.lang = 'ja-JP'
         utterance.rate = 0.8
         utterance.pitch = 1
-
         if (selectedVoiceURI) {
             const voice = voices.find(v => v.voiceURI === selectedVoiceURI)
             if (voice) utterance.voice = voice
         }
-
         window.speechSynthesis.speak(utterance)
-
-        // Visual feedback
-        setActiveRef(kana.romaji)
-        setTimeout(() => setActiveRef(null), 500)
     }
 
     return (
@@ -75,14 +72,29 @@ export function GojuonChart() {
                 </CardTitle>
 
                 <div className="flex flex-wrap items-center gap-3">
-                    {/* Voice Selector */}
-                    {voices.length > 0 && (
-                        <div className="flex items-center gap-2 bg-secondary/30 p-1 rounded-md border border-border/50">
+                    {/* Natural Voice Toggle */}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setUseOnlineVoice(!useOnlineVoice)}
+                        className={`h-7 text-xs border-border flex items-center gap-1.5 transition-all ${useOnlineVoice
+                            ? 'bg-green-500/10 text-green-500 border-green-500/50 shadow-[0_0_10px_rgba(34,197,94,0.2)]'
+                            : 'text-muted-foreground hover:text-foreground'
+                            }`}
+                        title={useOnlineVoice ? "使用在线神经网络语音 (接近真人)" : "使用本地浏览器语音"}
+                    >
+                        {useOnlineVoice ? <Sparkles className="w-3 h-3" /> : <Wifi className="w-3 h-3" />}
+                        {useOnlineVoice ? "AI 自然语音(在线)" : "本地机械音"}
+                    </Button>
+
+                    {/* Local Voice Backup Selector - Only show if Online is OFF */}
+                    {!useOnlineVoice && voices.length > 0 && (
+                        <div className="flex items-center gap-2 bg-secondary/30 p-1 rounded-md border border-border/50 animate-in fade-in slide-in-from-right-4">
                             <Settings2 className="w-3 h-3 text-muted-foreground ml-2" />
                             <select
                                 value={selectedVoiceURI}
                                 onChange={(e) => setSelectedVoiceURI(e.target.value)}
-                                className="bg-transparent text-xs font-sans text-foreground outline-none border-none py-1 pr-2 cursor-pointer max-w-[150px] truncate"
+                                className="bg-transparent text-xs font-sans text-foreground outline-none border-none py-1 pr-2 cursor-pointer max-w-[120px] truncate"
                             >
                                 {voices.map(v => (
                                     <option key={v.voiceURI} value={v.voiceURI} className="bg-card text-foreground">
@@ -164,7 +176,7 @@ export function GojuonChart() {
 
                 <div className="mt-6 flex items-center justify-center gap-2 text-xs text-muted-foreground font-mono opacity-60">
                     <Mic className="w-3 h-3" />
-                    Powered by Web Speech API
+                    Powered by {useOnlineVoice ? 'Neural AI Network' : 'Web Speech API'}
                 </div>
             </CardContent>
         </Card>
