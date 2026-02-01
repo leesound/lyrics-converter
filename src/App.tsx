@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Copy, Trash2, Upload, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2, Terminal } from 'lucide-react'
+import { Copy, Trash2, Upload, Type, Loader2, ScanEye, RefreshCw, AlertTriangle, Settings2, Terminal, Languages } from 'lucide-react'
 import Kuroshiro from 'kuroshiro'
 import KuromojiAnalyzer from 'kuroshiro-analyzer-kuromoji'
 import * as wanakana from 'wanakana'
@@ -320,8 +320,8 @@ function App() {
             <Terminal className="w-5 h-5 text-black" />
           </div>
           <h1 className="text-lg font-bold tracking-tight text-foreground">
-            LYRICS<span className="text-primary">.CONVERTER</span>
-            <span className="ml-2 text-xs font-mono text-muted-foreground px-1.5 py-0.5 border border-border rounded bg-secondary/50">v2.0</span>
+            日文歌词转换器
+            <span className="ml-2 text-xs font-mono text-muted-foreground px-1.5 py-0.5 border border-border rounded bg-secondary/50">v2.1</span>
           </h1>
         </div>
       </header>
@@ -331,28 +331,28 @@ function App() {
           <CardHeader className="pb-3 border-b border-border/50">
             <CardTitle className="text-sm font-mono flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
               <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-              Input Source
+              输入源
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-6">
             <Tabs defaultValue="text" className="w-full">
               <TabsList className="mb-4 bg-secondary border border-border w-full justify-start p-1 h-auto">
-                <TabsTrigger value="text" className="data-[state=active]:bg-primary data-[state=active]:text-black text-sm flex-1 font-medium font-mono">
+                <TabsTrigger value="text" className="data-[state=active]:bg-primary data-[state=active]:text-black text-sm flex-1 font-medium font-sans">
                   <Type className="w-4 h-4 mr-2" />
-                  TEXT_INPUT
+                  文本输入
                 </TabsTrigger>
-                <TabsTrigger value="image" className="data-[state=active]:bg-primary data-[state=active]:text-black text-sm flex-1 font-medium font-mono">
+                <TabsTrigger value="image" className="data-[state=active]:bg-primary data-[state=active]:text-black text-sm flex-1 font-medium font-sans">
                   <Upload className="w-4 h-4 mr-2" />
-                  IMAGE_OCR
+                  图片上传 (OCR)
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="text">
                 <Textarea
-                  placeholder="Paste Japanese lyrics here..."
+                  placeholder="请粘贴日文歌词，每行一句..."
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
-                  className="min-h-[160px] resize-none bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary font-mono text-sm leading-relaxed"
+                  className="min-h-[160px] resize-none bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary font-sans text-sm leading-relaxed"
                 />
               </TabsContent>
 
@@ -382,8 +382,8 @@ function App() {
                   ) : (
                     <>
                       <Upload className="w-10 h-10 mx-auto mb-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                      <p className="text-sm font-mono text-muted-foreground group-hover:text-foreground transition-colors">
-                        DRAG_IMAGE_HERE <span className="text-xs opacity-50 mx-2">OR</span> CLICK_TO_UPLOAD
+                      <p className="text-sm font-sans text-muted-foreground group-hover:text-foreground transition-colors">
+                        拖入图片 或 <span className="underline decoration-dashed decoration-primary underline-offset-4">点击上传</span>
                       </p>
                     </>
                   )}
@@ -392,38 +392,40 @@ function App() {
 
                 {/* Settings Toggle */}
                 <div className="mt-4 flex justify-end">
-                  <button onClick={() => setShowOcrSettings(!showOcrSettings)} className="flex items-center gap-1.5 text-xs font-mono text-muted-foreground hover:text-primary transition-colors">
+                  <button onClick={() => setShowOcrSettings(!showOcrSettings)} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors">
                     <Settings2 className="w-3 h-3" />
-                    CONFIGURE_OCR
+                    设置 OCR 引擎
                   </button>
                 </div>
 
                 {showOcrSettings && (
                   <div className="mt-2 p-4 bg-secondary/50 border border-border rounded-lg text-xs animate-in fade-in slide-in-from-top-1">
                     <div className="flex gap-2 p-1 bg-background rounded border border-border mb-3">
-                      {['tesseract', 'baidu'].map(p => (
-                        <button key={p} onClick={() => setOcrProvider(p as any)}
-                          className={`flex-1 py-1.5 font-mono text-xs rounded transition-all ${ocrProvider === p ? 'bg-primary text-black font-bold' : 'text-muted-foreground hover:text-foreground'}`}>
-                          {p.toUpperCase()}
-                        </button>
-                      ))}
+                      <button onClick={() => setOcrProvider('tesseract')}
+                        className={`flex-1 py-1.5 font-sans text-xs rounded transition-all ${ocrProvider === 'tesseract' ? 'bg-primary text-black font-bold' : 'text-muted-foreground hover:text-foreground'}`}>
+                        本地引擎 (免费)
+                      </button>
+                      <button onClick={() => setOcrProvider('baidu')}
+                        className={`flex-1 py-1.5 font-sans text-xs rounded transition-all ${ocrProvider === 'baidu' ? 'bg-primary text-black font-bold' : 'text-muted-foreground hover:text-foreground'}`}>
+                        百度云 (高精度)
+                      </button>
                     </div>
                     {ocrProvider === 'tesseract' ? (
                       <div className="flex gap-4">
                         <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                           <input type="checkbox" checked={ocrHighAccuracy} onChange={e => setOcrHighAccuracy(e.target.checked)} className="rounded border-border bg-background text-primary focus:ring-primary" />
-                          HIGH_ACCURACY
+                          高精度模式
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer text-muted-foreground hover:text-foreground">
                           <input type="checkbox" checked={ocrVertical} onChange={e => setOcrVertical(e.target.checked)} className="rounded border-border bg-background text-primary focus:ring-primary" />
-                          VERTICAL_MODE
+                          竖排文字
                         </label>
                       </div>
                     ) : (
                       <div className="space-y-2">
-                        <input value={baiduApiKey} onChange={e => setBaiduApiKey(e.target.value)} placeholder="BAIDU_API_KEY" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
-                        <input value={baiduSecretKey} onChange={e => setBaiduSecretKey(e.target.value)} type="password" placeholder="BAIDU_SECRET_KEY" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
-                        <a href="https://console.bce.baidu.com/ai/#/ai/ocr/overview/index" target="_blank" className="block text-right text-primary hover:underline">Apply for Free API &gt;</a>
+                        <input value={baiduApiKey} onChange={e => setBaiduApiKey(e.target.value)} placeholder="填写百度云 API Key" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
+                        <input value={baiduSecretKey} onChange={e => setBaiduSecretKey(e.target.value)} type="password" placeholder="填写百度云 Secret Key" className="w-full bg-background border border-border rounded p-2 text-xs font-mono focus:border-primary outline-none" />
+                        <a href="https://console.bce.baidu.com/ai/#/ai/ocr/overview/index" target="_blank" className="block text-right text-primary hover:underline">去申请免费额度 &gt;</a>
                       </div>
                     )}
                   </div>
@@ -438,11 +440,11 @@ function App() {
                 className="flex-1 bg-primary text-black hover:bg-primary/90 font-bold tracking-wide shadow-glow disabled:opacity-50 disabled:shadow-none transition-all h-10"
               >
                 {!isReady ? (
-                  initError ? "INIT_FAILED" : <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> LOADING_DICT...</>
+                  initError ? "初始化失败" : <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 词库加载中...</>
                 ) : isConverting ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> PROCESSING...</>
+                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> 转换中...</>
                 ) : (
-                  <><Terminal className="w-4 h-4 mr-2" /> EXECUTE_CONVERSION</>
+                  <><Languages className="w-4 h-4 mr-2" /> 开始转换</>
                 )}
               </Button>
 
@@ -470,10 +472,10 @@ function App() {
             <CardHeader className="pb-3 border-b border-border/50 flex flex-row items-center justify-between">
               <CardTitle className="text-sm font-mono flex items-center gap-2 text-muted-foreground uppercase tracking-wider">
                 <div className="w-2 h-2 rounded-full bg-primary" />
-                Output Result
+                转换结果
               </CardTitle>
-              <Button variant="ghost" size="sm" onClick={exportResult} className="text-primary hover:bg-primary/10 hover:text-primary font-mono text-xs h-7">
-                <Copy className="w-3 h-3 mr-1.5" /> COPY_ALL
+              <Button variant="ghost" size="sm" onClick={exportResult} className="text-primary hover:bg-primary/10 hover:text-primary font-sans text-xs h-7">
+                <Copy className="w-3 h-3 mr-1.5" /> 复制全部
               </Button>
             </CardHeader>
             <CardContent className="pt-6 space-y-6">
