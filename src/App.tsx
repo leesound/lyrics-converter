@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import './App.css'
 import { Button } from '@/components/ui/button'
+import { GojuonChart } from '@/components/GojuonChart'
 import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -509,6 +510,7 @@ function App() {
             </CardContent>
           </Card>
         )}
+        <GojuonChart />
       </main>
     </div>
   )
