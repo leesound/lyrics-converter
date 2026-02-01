@@ -321,7 +321,6 @@ function App() {
           </div>
           <h1 className="text-lg font-bold tracking-tight text-foreground">
             日文歌词转换器
-            <span className="ml-2 text-xs font-mono text-muted-foreground px-1.5 py-0.5 border border-border rounded bg-secondary/50">v2.1</span>
           </h1>
         </div>
       </header>
@@ -349,7 +348,11 @@ function App() {
 
               <TabsContent value="text">
                 <Textarea
-                  placeholder="请粘贴日文歌词，每行一句..."
+                  placeholder={`请粘贴日文歌词，每行一句...
+
+例如：
+君の名は
+夢を見ている`}
                   value={inputText}
                   onChange={(e) => setInputText(e.target.value)}
                   className="min-h-[160px] resize-none bg-background border-border focus:border-primary focus:ring-1 focus:ring-primary font-sans text-sm leading-relaxed"
